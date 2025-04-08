@@ -4,4 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-rocket = "0.5.1"
+rocket = { version = "0.5.1", features = ["json"] }
+dashmap = "5.5.3"
+lazy_static = "1.4.0"
+reqwest = { version = "0.12", features = ["json"] }
+getset = "0.1.2"
+dotenvy = "0.15.7"
+rocket_db_pools = { version = "0.2.0", features = ["sqlx_postgres"]}
