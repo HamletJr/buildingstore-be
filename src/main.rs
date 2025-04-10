@@ -3,6 +3,8 @@ use rocket_db_pools::{Database, Connection};
 use rocket_db_pools::sqlx::{self, Row};
 use dotenvy::dotenv;
 
+pub mod manajemen_pelanggan;
+
 #[derive(Database)]
 #[database("buildingstore")]
 pub struct BuildingStoreDB(sqlx::PgPool);
@@ -31,5 +33,6 @@ fn rocket() -> _ {
     rocket::build()
         .manage(reqwest::Client::builder().build().unwrap())
         .attach(BuildingStoreDB::init())
+        .attach(manajemen_pelanggan::controller::route_stage())
         .mount("/", routes![index, test_db])
 }
