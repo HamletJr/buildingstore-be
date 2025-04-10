@@ -1,4 +1,4 @@
-use chrono::Utc;
+use chrono::{ Utc, NaiveDate };
 
 /// Struct representing a customer (Pelanggan) in the system.
 /// Contains fields for ID, name, address, phone number, and join date.
@@ -11,7 +11,7 @@ pub struct Pelanggan {
     pub nama: String,
     pub alamat: String,
     pub no_telp: String,
-    pub tanggal_gabung: chrono::NaiveDate,
+    pub tanggal_gabung: NaiveDate,
 }
 
 impl Pelanggan {
