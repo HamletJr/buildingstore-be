@@ -7,14 +7,14 @@ pub trait SortStrategy {
 pub struct SortByNama;
 impl SortStrategy for SortByNama {
     fn execute(&self, customers: &mut Vec<Pelanggan>) {
-        
+        customers.sort_by(|a, b| a.nama.cmp(&b.nama));
     }
 }
 
 pub struct SortByTanggalGabung;
 impl SortStrategy for SortByTanggalGabung {
     fn execute(&self, customers: &mut Vec<Pelanggan>) {
-        
+        customers.sort_by(|a, b| a.tanggal_gabung.cmp(&b.tanggal_gabung));
     }
 }
 

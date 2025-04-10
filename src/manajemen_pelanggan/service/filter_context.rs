@@ -14,11 +14,11 @@ impl<'a> FilterContext<'a> {
     }
 
     pub fn set_strategy(&mut self, filter_strategy: Box<dyn FilterStrategy>) {
-        
+        self.filter_strategy = filter_strategy;
     }
 
     pub fn execute_filter(&mut self, customers: &mut Vec<Pelanggan>, query: &str) {
-        
+        self.filter_strategy.execute( customers, query);
     }
 }
 

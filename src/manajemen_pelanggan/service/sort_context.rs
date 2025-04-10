@@ -15,11 +15,11 @@ impl<'a> SortContext<'a> {
     }
 
     pub fn set_strategy(&mut self, sort_strategy: Box<dyn SortStrategy>) {
-        
+        self.sort_strategy = sort_strategy;
     }
 
     pub fn execute_sort(&mut self, customers: &mut Vec<Pelanggan>) {
-        
+        self.sort_strategy.execute(customers);
     }
 }
 

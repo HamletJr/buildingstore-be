@@ -7,21 +7,29 @@ pub trait FilterStrategy {
 pub struct FilterByNama;
 impl FilterStrategy for FilterByNama {
     fn execute(&self, pelanggan_vec: &mut Vec<Pelanggan>, query: &str) {
-        
+        pelanggan_vec.retain(|customer| customer.nama.contains(query));
     }
 }
 
 pub struct FilterByTanggalGabungPrev;
 impl FilterStrategy for FilterByTanggalGabungPrev {
     fn execute(&self, pelanggan_vec: &mut Vec<Pelanggan>, query: &str) {
-        
+        let date = match chrono::NaiveDate::parse_from_str(query, "%Y-%m-%d") {
+            Ok(parsed_date) => parsed_date,
+            Err(_) => return,
+        };
+        pelanggan_vec.retain(|customer| {customer.tanggal_gabung < date});
     }
 }
 
 pub struct FilterByTanggalGabungAfter;
 impl FilterStrategy for FilterByTanggalGabungAfter {
     fn execute(&self, pelanggan_vec: &mut Vec<Pelanggan>, query: &str) {
-        
+        let date = match chrono::NaiveDate::parse_from_str(query, "%Y-%m-%d") {
+            Ok(parsed_date) => parsed_date,
+            Err(_) => return,
+        };
+        pelanggan_vec.retain(|customer| {customer.tanggal_gabung > date});
     }
 }
 
