@@ -1,3 +1,10 @@
+use chrono::Utc;
+
+/// Struct representing a customer (Pelanggan) in the system.
+/// Contains fields for ID, name, address, phone number, and join date.
+/// 
+/// The `new` method can be used to create a new `Pelanggan` with only the necessary fields.
+/// ID and join date will be automatically initialized.
 #[derive(Debug, Clone)]
 pub struct Pelanggan {
     pub id: usize,
@@ -8,13 +15,16 @@ pub struct Pelanggan {
 }
 
 impl Pelanggan {
+    /// Creates a new instance of `Pelanggan`. Automatically initializes the `id` to 0 
+    /// and sets the `tanggal_gabung` to the current date. Use the default constructor
+    /// to create a `Pelanggan` object from an existing data source.
     pub fn new(nama: String, alamat: String, no_telp: String) -> Self {
         Pelanggan {
             id: 0,
             nama,
             alamat,
             no_telp,
-            tanggal_gabung: chrono::Utc::now().date_naive(),
+            tanggal_gabung: Utc::now().date_naive(),
         }
     }
 }
@@ -29,6 +39,6 @@ mod test {
         assert_eq!(pelanggan.nama, "Castorice");
         assert_eq!(pelanggan.alamat, "Amphoreus");
         assert_eq!(pelanggan.no_telp, "1234567890");
-        assert_eq!(pelanggan.tanggal_gabung, chrono::Utc::now().date_naive());
+        assert_eq!(pelanggan.tanggal_gabung, Utc::now().date_naive());
     }
 }
