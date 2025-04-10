@@ -1,5 +1,3 @@
-use chrono::NaiveDate;
-
 #[derive(Debug, Clone)]
 pub struct Pelanggan {
     pub id: usize,
@@ -16,7 +14,7 @@ impl Pelanggan {
             nama,
             alamat,
             no_telp,
-            tanggal_gabung: NaiveDate::default(),
+            tanggal_gabung: chrono::Utc::now().date_naive(),
         }
     }
 }
