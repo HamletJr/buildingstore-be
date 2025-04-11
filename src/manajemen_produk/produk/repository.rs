@@ -24,19 +24,20 @@ impl ProdukRepository {
     
     pub async fn ambil_semua_produk(db: &PgPool) -> Result<Vec<Produk>, Error> {
         let rows = sqlx::query(
-            "SELECT nama, kategori, harga, stok, deskripsi FROM produk"
+            "SELECT id, nama, kategori, harga, stok, deskripsi FROM produk"
         )
         .fetch_all(db)
         .await?;
         
         let produk_list = rows.iter().map(|row| {
-            Produk {
-                nama: row.get("nama"),
-                kategori: row.get("kategori"),
-                harga: row.get("harga"),
-                stok: row.get("stok"),
-                deskripsi: row.get("deskripsi"),
-            }
+            Produk::with_id(
+                row.get("id"),
+                row.get("nama"),
+                row.get("kategori"),
+                row.get("harga"),
+                row.get("stok"),
+                row.get("deskripsi"),
+            )
         }).collect();
         
         Ok(produk_list)
@@ -44,40 +45,42 @@ impl ProdukRepository {
     
     pub async fn ambil_produk_by_id(db: &PgPool, id: i64) -> Result<Option<Produk>, Error> {
         let maybe_row = sqlx::query(
-            "SELECT nama, kategori, harga, stok, deskripsi FROM produk WHERE id = $1"
+            "SELECT id, nama, kategori, harga, stok, deskripsi FROM produk WHERE id = $1"
         )
         .bind(id)
         .fetch_optional(db)
         .await?;
         
         match maybe_row {
-            Some(row) => Ok(Some(Produk {
-                nama: row.get("nama"),
-                kategori: row.get("kategori"),
-                harga: row.get("harga"),
-                stok: row.get("stok"),
-                deskripsi: row.get("deskripsi"),
-            })),
+            Some(row) => Ok(Some(Produk::with_id(
+                row.get("id"),
+                row.get("nama"),
+                row.get("kategori"),
+                row.get("harga"),
+                row.get("stok"),
+                row.get("deskripsi"),
+            ))),
             None => Ok(None)
         }
     }
     
     pub async fn filter_produk_by_kategori(db: &PgPool, kategori: &str) -> Result<Vec<Produk>, Error> {
         let rows = sqlx::query(
-            "SELECT nama, kategori, harga, stok, deskripsi FROM produk WHERE kategori = $1"
+            "SELECT id, nama, kategori, harga, stok, deskripsi FROM produk WHERE kategori = $1"
         )
         .bind(kategori)
         .fetch_all(db)
         .await?;
         
         let produk_list = rows.iter().map(|row| {
-            Produk {
-                nama: row.get("nama"),
-                kategori: row.get("kategori"),
-                harga: row.get("harga"),
-                stok: row.get("stok"),
-                deskripsi: row.get("deskripsi"),
-            }
+            Produk::with_id(
+                row.get("id"),
+                row.get("nama"),
+                row.get("kategori"),
+                row.get("harga"),
+                row.get("stok"),
+                row.get("deskripsi"),
+            )
         }).collect();
         
         Ok(produk_list)
@@ -106,5 +109,56 @@ impl ProdukRepository {
             .await?;
             
         Ok(result.rows_affected() > 0)
+    }
+    
+    // Tambahan: Metode untuk mencari produk berdasarkan harga
+    pub async fn filter_produk_by_price_range(
+        db: &PgPool, 
+        min_price: f64, 
+        max_price: f64
+    ) -> Result<Vec<Produk>, Error> {
+        let rows = sqlx::query(
+            "SELECT id, nama, kategori, harga, stok, deskripsi FROM produk WHERE harga >= $1 AND harga <= $2"
+        )
+        .bind(min_price)
+        .bind(max_price)
+        .fetch_all(db)
+        .await?;
+        
+        let produk_list = rows.iter().map(|row| {
+            Produk::with_id(
+                row.get("id"),
+                row.get("nama"),
+                row.get("kategori"),
+                row.get("harga"),
+                row.get("stok"),
+                row.get("deskripsi"),
+            )
+        }).collect();
+        
+        Ok(produk_list)
+    }
+    
+    // Tambahan: Metode untuk mencari produk berdasarkan stok
+    pub async fn filter_produk_by_stock_availability(db: &PgPool, min_stock: u32) -> Result<Vec<Produk>, Error> {
+        let rows = sqlx::query(
+            "SELECT id, nama, kategori, harga, stok, deskripsi FROM produk WHERE stok >= $1"
+        )
+        .bind(min_stock as i32)
+        .fetch_all(db)
+        .await?;
+        
+        let produk_list = rows.iter().map(|row| {
+            Produk::with_id(
+                row.get("id"),
+                row.get("nama"),
+                row.get("kategori"),
+                row.get("harga"),
+                row.get("stok"),
+                row.get("deskripsi"),
+            )
+        }).collect();
+        
+        Ok(produk_list)
     }
 }
