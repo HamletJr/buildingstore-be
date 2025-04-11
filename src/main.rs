@@ -1,8 +1,11 @@
 #[macro_use] extern crate rocket;
 use rocket_db_pools::{Database, Connection};
 use rocket_db_pools::sqlx::{self, Row};
+use rocket::serde::{Deserialize, Serialize};
 use dotenvy::dotenv;
 
+mod manajemen_produk;
+use manajemen_produk::{daftar_produk, detail_produk, tambah_produk, update_produk, hapus_produk, filter_produk_by_kategori};
 pub mod manajemen_pelanggan;
 
 #[derive(Database)]
@@ -35,4 +38,12 @@ fn rocket() -> _ {
         .attach(BuildingStoreDB::init())
         .attach(manajemen_pelanggan::controller::route_stage())
         .mount("/", routes![index, test_db])
+        .mount("/api", routes![
+            daftar_produk,
+            detail_produk,
+            tambah_produk,
+            update_produk,
+            hapus_produk,
+            filter_produk_by_kategori
+        ])
 }
