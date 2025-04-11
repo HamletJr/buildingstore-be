@@ -3,9 +3,8 @@ mod tests {
     use chrono::Utc;
     use uuid::Uuid;
 
-    use crate::main::factory::supplier_transaction_factory::SupplierTransactionFactory;
+    use crate::main::patterns::factory::SupplierTransactionFactory;
     use crate::main::model::supplier::Supplier;
-    use crate::main::model::supplier_transaction::SupplierTransaction;
 
     #[test]
     fn test_create_transaction_from_supplier() {
