@@ -14,7 +14,7 @@ pub struct Transaksi {
 }
 
 impl Transaksi {
-    pub fn buat_transaksi_baru(
+    pub fn buat_transaksi_baru( 
         kasir_id: String,
         pelanggan_id: String,
         produk: Vec<DetailProdukTransaksi>,
