@@ -1,5 +1,4 @@
-// File: src/manajemen_produk/produk/tests/create.rs
-use super::super::model::Produk;
+use super::super::model::{Produk, validate_produk};
 
 #[test]
 fn test_create_produk_baru() {
@@ -70,24 +69,26 @@ fn test_validasi_produk() {
     assert_eq!(result.unwrap_err(), "Harga produk tidak boleh negatif");
 }
 
-fn validate_produk(
-    nama: String,
-    kategori: String,
-    harga: f64,
-    stok: u32,
-    deskripsi: Option<String>,
-) -> Result<(), &'static str> {
-    if nama.trim().is_empty() {
-        return Err("Nama produk tidak boleh kosong");
-    }
+#[test]
+fn test_create_with_validation() {
+    // Testing valid product creation
+    let result = Produk::create_with_validation(
+        "Laptop Gaming".to_string(),
+        "Elektronik".to_string(),
+        15_000_000.0,
+        10,
+        Some("Laptop dengan RTX 4060".to_string()),
+    );
+    assert!(result.is_ok());
     
-    if kategori.trim().is_empty() {
-        return Err("Kategori produk tidak boleh kosong");
-    }
-    
-    if harga < 0.0 {
-        return Err("Harga produk tidak boleh negatif");
-    }
-    
-    Ok(())
+    // Testing invalid product creation (empty name)
+    let result = Produk::create_with_validation(
+        "".to_string(),
+        "Elektronik".to_string(),
+        15_000_000.0,
+        10,
+        Some("Laptop dengan RTX 4060".to_string()),
+    );
+    assert!(result.is_err());
+    assert_eq!(result.unwrap_err(), "Nama produk tidak boleh kosong");
 }
