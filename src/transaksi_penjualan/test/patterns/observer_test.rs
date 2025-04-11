@@ -2,7 +2,6 @@
 mod tests { 
     use chrono::Utc;
     use std::sync::{Arc, Mutex};
-    use std::vec;
 
     use crate::main::enums::status_transaksi::StatusTransaksi;
     use crate::main::model::transaksi::{DetailProdukTransaksi, Transaksi};
@@ -13,15 +12,17 @@ mod tests {
         stok_dikembalikan: Arc<Mutex<bool>>,
     }
 
-    impl StokObserver for MockStokManager {
-        fn on_transaksi_selesai(&self, transaksi: &Transaksi) {
+    impl TransaksiObserver for MockStokManager {
+        fn on_transaksi_selesai(&self, _transaksi: &Transaksi) {
             *self.stok_dikurangi.lock().unwrap() = true;
         }
         
-        fn on_transaksi_dibatalkan(&self, transaksi: &Transaksi) {
+        fn on_transaksi_dibatalkan(&self, _transaksi: &Transaksi) {
             *self.stok_dikembalikan.lock().unwrap() = true;
         }
     }
+
+    impl StokObserver for MockStokManager {}
 
     #[test]
     fn test_notify_observers_when_transaksi_selesai() {
