@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use crate::main::enums::status_transaksi::StatusTransaksi;
-    use crate::main::model::transaksi::{Transaksi, DetailProdukTransaksi};
+    use crate::transaksi_penjualan::main::enums::status_transaksi::StatusTransaksi;
+    use crate::transaksi_penjualan::main::model::transaksi::{Transaksi, DetailProdukTransaksi};
 
     #[test]
     fn test_buat_transaksi_baru() {

@@ -16,4 +16,4 @@ chrono = { version = "0.4", features = ["serde", "clock"] }
 uuid = { version = "1", features = ["v4"] }
 
 [lib]
-path = "src/transaksi_penjualan/lib.rs"
+path = "src/lib.rs" 

@@ -198,8 +198,8 @@ dependencies = [
  "reqwest",
  "rocket",
  "rocket_db_pools",
- "uuid",
  "sqlx",
+ "uuid",
 ]
 
 [[package]]
