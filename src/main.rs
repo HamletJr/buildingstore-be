@@ -1,7 +1,11 @@
 #[macro_use] extern crate rocket;
 use rocket_db_pools::{Database, Connection};
 use rocket_db_pools::sqlx::{self, Row};
+use rocket::serde::{Deserialize, Serialize};
 use dotenvy::dotenv;
+
+mod manajemen_produk;
+use manajemen_produk::{daftar_produk, detail_produk, tambah_produk, update_produk, hapus_produk, filter_produk_by_kategori};
 
 #[derive(Database)]
 #[database("buildingstore")]
@@ -32,4 +36,12 @@ fn rocket() -> _ {
         .manage(reqwest::Client::builder().build().unwrap())
         .attach(BuildingStoreDB::init())
         .mount("/", routes![index, test_db])
+        .mount("/api", routes![
+            daftar_produk,
+            detail_produk,
+            tambah_produk,
+            update_produk,
+            hapus_produk,
+            filter_produk_by_kategori
+        ])
 }
