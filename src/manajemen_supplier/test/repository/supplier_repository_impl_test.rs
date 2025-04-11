@@ -9,7 +9,8 @@ mod tests {
      
 
     #[test]
-    fn test_save_supplier{
+    fn test_save_supplier(){
+        let repository = SupplierRepositoryImpl::new();
         let supplier_id = format!("SUP-{}", Uuid::new_v4());
 
         let supplier = Supplier {
@@ -32,7 +33,7 @@ mod tests {
     }
     
     #[test]
-    fn test_find_supplier_by_id{
+    fn test_find_supplier_by_id(){
         let repository = SupplierRepositoryImpl::new();
         let supplier_id = format!("SUP-{}", Uuid::new_v4());
         
@@ -55,7 +56,7 @@ mod tests {
     }
 
     #[test]
-    fn test_update_supplier{
+    fn test_update_supplier(){
         let repository = SupplierRepositoryImpl::new();
         let supplier_id = format!("SUP-{}", Uuid::new_v4());
         
@@ -80,7 +81,7 @@ mod tests {
     }
 
     #[test]
-    fn test_delete_supplier{
+    fn test_delete_supplier(){
         let repository = SupplierRepositoryImpl::new();
         let supplier_id = format!("SUP-{}", Uuid::new_v4());
         
