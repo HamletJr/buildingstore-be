@@ -98,4 +98,13 @@ impl ProdukRepository {
         
         Ok(result.rows_affected() > 0)
     }
+    
+    pub async fn hapus_produk(db: &PgPool, id: i64) -> Result<bool, Error> {
+        let result = sqlx::query("DELETE FROM produk WHERE id = $1")
+            .bind(id)
+            .execute(db)
+            .await?;
+            
+        Ok(result.rows_affected() > 0)
+    }
 }
