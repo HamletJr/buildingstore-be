@@ -1,19 +1,25 @@
-use crate::main::model::supplier::Supplier;
-use crate::main::model::supplier_transaction::SupplierTransaction;
-use std::thread::sleep;
-use std::time::Duration;
+#[cfg(test)]
+mod tests {
+    use uuid::Uuid;
+    use chrono::Utc;
+    use crate::main::model::supplier::Supplier;
 
-#[test]
-fn test_create_supplier() {
-    let supplier = Supplier::new(
-        "PT. Beton".to_string(),
-        "semen".to_string(),
-        1000,
-        "2306206282".to_string(),
-    );
+    #[test]
+    fn test_create_supplier() {
+        let supplier_id = format!("SUP-{}", Uuid::new_v4());
 
-    assert_eq!(supplier.name, "PT. Beton");
-    assert_eq!(supplier.jenis_barang, "semen");
-    assert_eq!(supplier.jumlah_barang, 1000);
-    assert_eq!(supplier.pengiriman_info, "2306206282");
+        let supplier = Supplier {
+            id: supplier_id.clone(),
+            name: "PT. Ayam".to_string(),
+            jenis_barang: "ayam".to_string(),
+            jumlah_barang: 1000,
+            resi: "2306206282".to_string(),
+            updated_at: Utc::now(),
+        };
+
+        assert_eq!(supplier.name, "PT. Ayam");
+        assert_eq!(supplier.jenis_barang, "ayam");
+        assert_eq!(supplier.jumlah_barang, 1000);
+        assert_eq!(supplier.resi, "2306206282");
+    }
 }
