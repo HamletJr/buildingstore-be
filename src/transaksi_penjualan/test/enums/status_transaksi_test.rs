@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::main::enums::status_transaksi::StatusTransaksii::StatusTransaksi;
+    use crate::main::enums::status_transaksi::StatusTransaksi;
 
     #[test]
     fn test_status_transaksi_from_string() {

@@ -22,12 +22,9 @@ mod tests {
             id: format!("TRX-{}", Uuid::new_v4()),
             pelanggan_id: "PLG-001".to_string(),
             kasir_id: "KSR-001".to_string(),
-            waktu_transaksi: Utc::now(),
-            daftar_produk: vec![detail.clone()],
-            total_harga: 45000.0,
+            waktu: Utc::now(),
+            produk: vec![detail.clone()],
             status: StatusTransaksi::MasihDiproses,
-            waktu: todo!(),
-            produk: todo!(),
         };
 
         let result = repo.save(transaksi.clone());
@@ -44,9 +41,8 @@ mod tests {
             id: transaksi_id.clone(),
             pelanggan_id: "PLG-001".to_string(),
             kasir_id: "KSR-001".to_string(),
-            waktu_transaksi: Utc::now(),
-            daftar_produk: vec![],
-            total_harga: 0.0,
+            waktu: Utc::now(),
+            produk: vec![],
             status: StatusTransaksi::MasihDiproses,
         };
 
@@ -66,9 +62,8 @@ mod tests {
             id: transaksi_id.clone(),
             pelanggan_id: "PLG-001".to_string(),
             kasir_id: "KSR-001".to_string(),
-            waktu_transaksi: Utc::now(),
-            daftar_produk: vec![],
-            total_harga: 0.0,
+            waktu: Utc::now(),
+            produk: vec![],
             status: StatusTransaksi::MasihDiproses,
         };
 
@@ -89,9 +84,8 @@ mod tests {
             id: transaksi_id.clone(),
             pelanggan_id: "PLG-001".to_string(),
             kasir_id: "KSR-001".to_string(),
-            waktu_transaksi: Utc::now(),
-            daftar_produk: vec![],
-            total_harga: 0.0,
+            waktu: Utc::now(),
+            produk: vec![],
             status: StatusTransaksi::MasihDiproses,
         };
 
