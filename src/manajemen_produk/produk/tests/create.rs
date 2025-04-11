@@ -91,4 +91,73 @@ fn test_create_with_validation() {
     );
     assert!(result.is_err());
     assert_eq!(result.unwrap_err(), "Nama produk tidak boleh kosong");
+
+    #[test]
+    fn test_produk_builder() {
+        // Using the builder pattern
+        let produk_result = ProdukBuilder::new("Laptop Gaming".to_string(), "Elektronik".to_string())
+            .harga(15_000_000.0)
+            .stok(10)
+            .deskripsi("Laptop dengan RTX 4060".to_string())
+            .build();
+        
+        assert!(produk_result.is_ok());
+        let produk = produk_result.unwrap();
+        
+        assert_eq!(produk.nama, "Laptop Gaming");
+        assert_eq!(produk.kategori, "Elektronik");
+        assert_eq!(produk.harga, 15_000_000.0);
+        assert_eq!(produk.stok, 10);
+        assert_eq!(produk.deskripsi, Some("Laptop dengan RTX 4060".to_string()));
+    }
+
+    #[test]
+    fn test_builder_validation() {
+        // Test validation with empty name
+        let produk_result = ProdukBuilder::new("".to_string(), "Elektronik".to_string())
+            .harga(15_000_000.0)
+            .stok(10)
+            .build();
+        
+        assert!(produk_result.is_err());
+        assert_eq!(produk_result.unwrap_err(), "Nama produk tidak boleh kosong");
+        
+        // Test validation with negative price
+        let produk_result = ProdukBuilder::new("Laptop Gaming".to_string(), "Elektronik".to_string())
+            .harga(-5000.0)
+            .stok(10)
+            .build();
+        
+        assert!(produk_result.is_err());
+        assert_eq!(produk_result.unwrap_err(), "Harga produk tidak boleh negatif");
+    }
+
+    #[test]
+    fn test_produk_factory_methods() {
+        // Using the factory method for laptops
+        let laptop = Produk::create_laptop(
+            "Gaming Laptop".to_string(),
+            12_000_000.0,
+            5,
+            Some("High-performance gaming laptop".to_string())
+        );
+        
+        assert_eq!(laptop.nama, "Gaming Laptop");
+        assert_eq!(laptop.kategori, "Elektronik");
+        assert_eq!(laptop.harga, 12_000_000.0);
+        assert_eq!(laptop.stok, 5);
+        
+        // Using the factory method for building materials
+        let material = Produk::create_building_material(
+            "Semen".to_string(),
+            75_000.0,
+            100,
+            Some("Semen tahan air".to_string())
+        );
+        
+        assert_eq!(material.nama, "Semen");
+        assert_eq!(material.kategori, "Material");
+        assert_eq!(material.harga, 75_000.0);
+        assert_eq!(material.stok, 100);
+    }
 }
