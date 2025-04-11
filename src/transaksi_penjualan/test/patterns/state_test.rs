@@ -5,9 +5,7 @@ mod tests {
 
     use crate::main::enums::status_transaksi::StatusTransaksi;
     use crate::main::model::transaksi::{DetailProdukTransaksi, Transaksi};
-    use crate::main::patterns::state::{
-        DibatalkanState, MasihDiprosesState, SelesaiState, TransaksiState, TransaksiStateContext,
-    };
+    use crate::main::patterns::state::TransaksiStateContext;
 
     #[test]
     fn test_masih_diproses_state_can_update() {
@@ -18,7 +16,7 @@ mod tests {
             harga_satuan: 10000.0,
         };
         
-        let mut transaksi = Transaksi {
+        let transaksi = Transaksi {
             id: "TRX-001".to_string(),
             waktu: Utc::now(),
             kasir_id: "KSR-001".to_string(),
@@ -53,7 +51,7 @@ mod tests {
             harga_satuan: 10000.0,
         };
         
-        let mut transaksi = Transaksi {
+        let transaksi = Transaksi {
             id: "TRX-001".to_string(),
             waktu: Utc::now(),
             kasir_id: "KSR-001".to_string(),
@@ -89,7 +87,7 @@ mod tests {
             harga_satuan: 10000.0,
         };
         
-        let mut transaksi = Transaksi {
+        let transaksi = Transaksi {
             id: "TRX-001".to_string(),
             waktu: Utc::now(),
             kasir_id: "KSR-001".to_string(),
@@ -125,7 +123,7 @@ mod tests {
             harga_satuan: 10000.0,
         };
         
-        let mut transaksi = Transaksi {
+        let transaksi = Transaksi {
             id: "TRX-001".to_string(),
             waktu: Utc::now(),
             kasir_id: "KSR-001".to_string(),
@@ -152,7 +150,7 @@ mod tests {
             harga_satuan: 10000.0,
         };
         
-        let mut transaksi = Transaksi {
+        let transaksi = Transaksi {
             id: "TRX-001".to_string(),
             waktu: Utc::now(),
             kasir_id: "KSR-001".to_string(),
@@ -179,7 +177,7 @@ mod tests {
             harga_satuan: 10000.0,
         };
         
-        let mut transaksi = Transaksi {
+        let transaksi = Transaksi {
             id: "TRX-001".to_string(),
             waktu: Utc::now(),
             kasir_id: "KSR-001".to_string(),
