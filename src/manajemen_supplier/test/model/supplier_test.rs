@@ -2,7 +2,7 @@
 mod tests {
     use uuid::Uuid;
     use chrono::Utc;
-    use crate::main::model::supplier::Supplier;
+    use crate::manajemen_supplier::main::model::supplier::Supplier;
 
     #[test]
     fn test_create_supplier() {

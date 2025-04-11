@@ -1,7 +1,7 @@
 use chrono::Utc;
 use uuid::Uuid;
 
-use crate::main::model::{supplier::Supplier, supplier_transaction::SupplierTransaction};
+use crate::manajemen_supplier::main::model::{supplier::Supplier, supplier_transaction::SupplierTransaction};
 
 pub struct SupplierTransactionFactory;
 

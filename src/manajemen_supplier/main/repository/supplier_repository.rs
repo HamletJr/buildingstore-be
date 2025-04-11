@@ -1,4 +1,4 @@
-use crate::main::model::supplier::Supplier;
+use crate::manajemen_supplier::main::model::supplier::Supplier;
 pub trait SupplierRepository: Send + Sync {
     fn save(&self, supplier: Supplier) -> Result<Supplier, String>;
     fn find_by_id(&self, id: &str) -> Option<Supplier>;

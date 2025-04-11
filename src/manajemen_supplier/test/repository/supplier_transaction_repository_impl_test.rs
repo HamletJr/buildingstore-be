@@ -1,10 +1,10 @@
 use chrono::Utc;
 use uuid::Uuid;
 
-use crate::main::model::supplier::Supplier;
-use crate::main::model::supplier_transaction::SupplierTransaction;
-use crate::main::repository::supplier_transaction_repository::SupplierTransactionRepository;
-use crate::main::repository::supplier_transaction_repository_impl::SupplierTransactionRepositoryImpl;
+use crate::manajemen_supplier::main::model::supplier::Supplier;
+use crate::manajemen_supplier::main::model::supplier_transaction::SupplierTransaction;
+use crate::manajemen_supplier::main::repository::supplier_transaction_repository::SupplierTransactionRepository;
+use crate::manajemen_supplier::main::repository::supplier_transaction_repository_impl::SupplierTransactionRepositoryImpl;
 
 #[test]
 fn save_supplier_transaction() {

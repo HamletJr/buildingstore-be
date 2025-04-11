@@ -1,9 +1,9 @@
 use std::sync::{Arc, Mutex};
 
-use crate::main::model::supplier::Supplier;
-use crate::main::repository::supplier_transaction_repository::SupplierTransactionRepository;
-use crate::main::patterns::factory::SupplierTransactionFactory;
-use crate::main::repository::supplier_transaction_repository_impl::SupplierTransactionRepositoryImpl;
+use crate::manajemen_supplier::main::model::supplier::Supplier;
+use crate::manajemen_supplier::main::repository::supplier_transaction_repository::SupplierTransactionRepository;
+use crate::manajemen_supplier::main::patterns::factory::SupplierTransactionFactory;
+use crate::manajemen_supplier::main::repository::supplier_transaction_repository_impl::SupplierTransactionRepositoryImpl;
 
 pub trait SupplierObserver: Send + Sync {
     fn on_supplier_saved(&self, supplier: &Supplier);

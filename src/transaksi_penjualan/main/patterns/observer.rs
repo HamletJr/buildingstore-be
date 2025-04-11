@@ -1,5 +1,5 @@
-use crate::main::model::transaksi::Transaksi;
-use crate::main::patterns::state::TransaksiStateContext;
+use crate::transaksi_penjualan::main::model::transaksi::Transaksi;
+use crate::transaksi_penjualan::main::patterns::state::TransaksiStateContext;
 
 pub trait TransaksiObserver: Send + Sync {
     fn on_transaksi_selesai(&self, transaksi: &Transaksi);
@@ -33,7 +33,7 @@ impl TransaksiSubject {
         }
     }
     
-    pub fn update_produk(&self, produk_baru: Vec<crate::main::model::transaksi::DetailProdukTransaksi>) -> Result<Transaksi, String> {
+    pub fn update_produk(&self, produk_baru: Vec<crate::transaksi_penjualan::main::model::transaksi::DetailProdukTransaksi>) -> Result<Transaksi, String> {
         self.state_context.update_produk(produk_baru)
     }
     

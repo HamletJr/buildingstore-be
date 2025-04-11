@@ -1,4 +1,4 @@
-use crate::main::model::supplier_transaction::SupplierTransaction;
+use crate::manajemen_supplier::main::model::supplier_transaction::SupplierTransaction;
 
 pub trait SupplierTransactionRepository: Send + Sync {
     fn save(&self, transaction: SupplierTransaction) -> Result<SupplierTransaction, String>;

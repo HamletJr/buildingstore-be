@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use crate::main::model::supplier::Supplier;
-use crate::main::repository::supplier_repository::SupplierRepository;
+use crate::manajemen_supplier::main::model::supplier::Supplier;
+use crate::manajemen_supplier::main::repository::supplier_repository::SupplierRepository;
 
 #[derive(Clone, Default)]
 pub struct SupplierRepositoryImpl {

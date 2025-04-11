@@ -5,10 +5,10 @@ mod tests {
     use chrono::Utc;
     use uuid::Uuid;
 
-    use crate::main::model::supplier::Supplier;
-    use crate::main::repository::supplier_transaction_repository::SupplierTransactionRepository;
-    use crate::main::repository::supplier_transaction_repository_impl::SupplierTransactionRepositoryImpl;
-    use crate::main::patterns::observer::{SupplierEventDispatcher, SupplierTransactionLogger};
+    use crate::manajemen_supplier::main::model::supplier::Supplier;
+    use crate::manajemen_supplier::main::repository::supplier_transaction_repository::SupplierTransactionRepository;
+    use crate::manajemen_supplier::main::repository::supplier_transaction_repository_impl::SupplierTransactionRepositoryImpl;
+    use crate::manajemen_supplier::main::patterns::observer::{SupplierEventDispatcher, SupplierTransactionLogger};
 
     #[test]
     fn test_supplier_observer_logs_transaction_on_save() {

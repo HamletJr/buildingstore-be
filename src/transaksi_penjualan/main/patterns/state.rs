@@ -1,5 +1,5 @@
-use crate::main::enums::status_transaksi::StatusTransaksi;
-use crate::main::model::transaksi::{DetailProdukTransaksi, Transaksi};
+use crate::transaksi_penjualan::main::enums::status_transaksi::StatusTransaksi;
+use crate::transaksi_penjualan::main::model::transaksi::{DetailProdukTransaksi, Transaksi};
 
 pub trait TransaksiState {
     fn update_produk(&self, transaksi: &Transaksi, produk_baru: Vec<DetailProdukTransaksi>) -> Result<Transaksi, String>;

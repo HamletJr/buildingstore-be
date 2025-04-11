@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::main::model::{supplier::Supplier, supplier_transaction::SupplierTransaction};
+    use crate::manajemen_supplier::main::model::{supplier::Supplier, supplier_transaction::SupplierTransaction};
     use chrono::Utc;
     
 

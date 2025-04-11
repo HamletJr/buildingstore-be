@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::main::model::transaksi::Transaksi;
+use crate::transaksi_penjualan::main::model::transaksi::Transaksi;
 
 pub trait TransaksiRepository: Send + Sync {
     fn save(&self, transaksi: Transaksi) -> Result<Transaksi, String>;

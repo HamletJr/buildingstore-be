@@ -3,9 +3,9 @@ mod tests {
     use chrono::Utc;
     use uuid::Uuid;
 
-    use crate::main::model::supplier::Supplier;
-    use crate::main::repository::supplier_repository::SupplierRepository;
-    use crate::main::repository::supplier_repository_impl::SupplierRepositoryImpl;
+    use crate::manajemen_supplier::main::model::supplier::Supplier;
+    use crate::manajemen_supplier::main::repository::supplier_repository::SupplierRepository;
+    use crate::manajemen_supplier::main::repository::supplier_repository_impl::SupplierRepositoryImpl;
      
 
     #[test]

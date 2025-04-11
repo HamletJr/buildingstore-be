@@ -1,7 +1,7 @@
 use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
-use crate::main::enums::status_transaksi::StatusTransaksi;
+use crate::transaksi_penjualan::main::enums::status_transaksi::StatusTransaksi;
 
 #[derive(Debug, Clone)]
 pub struct Transaksi {

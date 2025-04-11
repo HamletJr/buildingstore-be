@@ -3,9 +3,9 @@ mod tests {
     use chrono::Utc;
     use std::sync::{Arc, Mutex};
 
-    use crate::main::enums::status_transaksi::StatusTransaksi;
-    use crate::main::model::transaksi::{DetailProdukTransaksi, Transaksi};
-    use crate::main::patterns::{StokObserver, TransaksiObserver, TransaksiSubject};
+    use crate::transaksi_penjualan::main::enums::status_transaksi::StatusTransaksi;
+    use crate::transaksi_penjualan::main::model::transaksi::{DetailProdukTransaksi, Transaksi};
+    use crate::transaksi_penjualan::main::patterns::{StokObserver, TransaksiObserver, TransaksiSubject};
 
     struct MockStokManager {
         stok_dikurangi: Arc<Mutex<bool>>,
