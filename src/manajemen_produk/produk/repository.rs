@@ -82,4 +82,20 @@ impl ProdukRepository {
         
         Ok(produk_list)
     }
+    
+    pub async fn update_produk(db: &PgPool, id: i64, produk: &Produk) -> Result<bool, Error> {
+        let result = sqlx::query(
+            "UPDATE produk SET nama = $1, kategori = $2, harga = $3, stok = $4, deskripsi = $5 WHERE id = $6"
+        )
+        .bind(&produk.nama)
+        .bind(&produk.kategori)
+        .bind(produk.harga)
+        .bind(produk.stok as i32)
+        .bind(&produk.deskripsi)
+        .bind(id)
+        .execute(db)
+        .await?;
+        
+        Ok(result.rows_affected() > 0)
+    }
 }
