@@ -11,15 +11,6 @@ reqwest = { version = "0.12", features = ["json"] }
 getset = "0.1.2"
 dotenvy = "0.15.7"
 rocket_db_pools = { version = "0.2.0", features = ["sqlx_postgres"]}
-
-chrono = { version = "0.4", features = ["serde", "clock"] }
-uuid = { version = "1", features = ["v4"] } 
-
-[lib]
-path = "src/manajemen_produk/lib.rs"
 sqlx = { version = "0.7", default-features = false, features = ["migrate"] }
 chrono = { version = "0.4", features = ["serde", "clock"] }
 uuid = { version = "1", features = ["v4"] }
-
-[lib]
-path = "src/lib.rs" 
