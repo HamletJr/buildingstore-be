@@ -1,8 +1,10 @@
 #[macro_use] extern crate rocket;
 use rocket_db_pools::{Database, Connection};
 use rocket_db_pools::sqlx::{self, Row};
+use rocket::serde::{Deserialize, Serialize};
 use dotenvy::dotenv;
 
+pub mod manajemen_produk;
 pub mod manajemen_pelanggan;
 
 #[derive(Database)]

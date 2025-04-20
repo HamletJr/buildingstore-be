@@ -10,6 +10,7 @@ lazy_static = "1.4.0"
 reqwest = { version = "0.12", features = ["json"] }
 getset = "0.1.2"
 dotenvy = "0.15.7"
+rocket_db_pools = { version = "0.2.0", features = ["sqlx_postgres"]}
 sqlx = { version = "0.7", default-features = false, features = ["migrate"] }
-rocket_db_pools = { version = "0.2.0", features = ["sqlx_postgres"] }
-chrono = "0.4.40"
+chrono = { version = "0.4", features = ["serde", "clock"] }
+uuid = { version = "1", features = ["v4"] }
