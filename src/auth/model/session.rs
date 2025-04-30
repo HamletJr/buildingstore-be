@@ -13,15 +13,19 @@ pub struct Session {
 
 impl Session {
     pub fn new(user: User) -> Self {
-        todo!()
+        Session {
+            session_key: Uuid::new_v4().to_string(),
+            user_id: user.id,
+            expires_at: Utc::now() + chrono::Duration::hours(24),
+        }
     }
 
     pub fn is_valid(&self) -> bool {
-        todo!()
+        Utc::now() < self.expires_at
     }
 
     pub fn generate_session_key() -> String {
-        todo!()
+        Uuid::new_v4().to_string()
     }
 }
 
