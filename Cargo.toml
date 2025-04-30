@@ -4,13 +4,14 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-rocket = { version = "0.5.1", features = ["json"] }
+rocket = { version = "0.5.1", features = ["json", "secrets"] }
 dashmap = "5.5.3"
 lazy_static = "1.4.0"
 reqwest = { version = "0.12", features = ["json"] }
 getset = "0.1.2"
 dotenvy = "0.15.7"
-rocket_db_pools = { version = "0.2.0", features = ["sqlx_postgres"]}
-sqlx = { version = "0.7", default-features = false, features = ["migrate"] }
+rocket_db_pools = { version = "0.2.0", features = ["sqlx_postgres", "sqlx_sqlite"]}
+sqlx = { version = "0.7", features = ["migrate", "macros", "any"] }
 chrono = { version = "0.4", features = ["serde", "clock"] }
 uuid = { version = "1", features = ["v4"] }
+bcrypt = "0.17.0"
