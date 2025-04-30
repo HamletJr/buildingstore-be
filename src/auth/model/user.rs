@@ -11,11 +11,16 @@ pub struct User {
 
 impl User {
     pub fn new(username: String, password: String, is_admin: bool) -> Self {
-        todo!();
+        User {
+            id: 0,
+            username,
+            password: bcrypt::hash(password, bcrypt::DEFAULT_COST).expect("Failed to hash password"),
+            is_admin,
+        }
     }
 
     pub fn verify_password(&self, password: &str) -> bool {
-        todo!();
+        bcrypt::verify(password, &self.password).unwrap_or(false)
     }
 }
 
