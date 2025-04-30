@@ -2,17 +2,40 @@ use rocket_db_pools::sqlx;
 use sqlx::{Any, Row};
 use sqlx::pool::PoolConnection;
 use uuid::Uuid;
+use chrono::DateTime;
 use crate::auth::model::session::Session;
 
 pub struct SessionRepository;
 
 impl SessionRepository {
     pub async fn create_session(mut db: PoolConnection<Any>, session: Session) -> Result<Session, sqlx::Error> {
-        todo!()
+        sqlx::query("INSERT INTO sessions (session_key, user_id, expires_at) VALUES ($1, $2, $3)")
+            .bind(&session.session_key)
+            .bind(&session.user_id)
+            .bind(&session.expires_at.to_rfc3339())
+            .execute(&mut *db)
+            .await?;
+
+        Ok(session)
     }
 
     pub async fn get_session_by_key(mut db: PoolConnection<Any>, session_key: Uuid) -> Result<Session, sqlx::Error> {
-        todo!()
+        let row = sqlx::query("SELECT * FROM sessions WHERE session_key = $1")
+            .bind(session_key.to_string())
+            .fetch_one(&mut *db)
+            .await?;
+
+        let session_key: String = row.get("session_key");
+        let user_id: i64 = row.get("user_id");
+        let expires_at: String = row.get("expires_at");
+
+        Ok(Session {
+            session_key,
+            user_id,
+            expires_at: DateTime::parse_from_rfc3339(&expires_at)
+                .expect("Failed to parse expires_at")
+                .with_timezone(&chrono::Utc),
+        })
     }
 }
 
