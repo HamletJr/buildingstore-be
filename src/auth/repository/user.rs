@@ -46,6 +46,10 @@ impl UserRepository {
             is_admin,
         })
     }
+
+    pub async fn get_user_by_id(mut db: PoolConnection<Any>, user_id: i64) -> Result<User, sqlx::Error> {
+        todo!()
+    }
 }
 
 #[cfg(test)]
@@ -100,6 +104,26 @@ mod test {
     async fn test_get_user_by_nonexistent_username() {
         let db = setup().await;
         let result = UserRepository::get_user_by_username(db.acquire().await.unwrap(), "nonexistent_user").await;
+        assert!(result.is_err());
+    }
+
+    #[async_test]
+    async fn test_get_user_by_id() {
+        let db = setup().await;
+        let user = User::new("test_user".to_string(), "password".to_string(), false);
+
+        let created_user = UserRepository::create_user(db.acquire().await.unwrap(), user.clone()).await.unwrap();
+        let result = UserRepository::get_user_by_id(db.acquire().await.unwrap(), created_user.id).await;
+        assert!(result.is_ok());
+        let fetched_user = result.unwrap();
+        assert_eq!(fetched_user.username, user.username);
+        assert_eq!(fetched_user.is_admin, user.is_admin);
+    }
+
+    #[async_test]
+    async fn test_get_user_by_nonexistent_id() {
+        let db = setup().await;
+        let result = UserRepository::get_user_by_id(db.acquire().await.unwrap(), 999).await;
         assert!(result.is_err());
     }
 }
