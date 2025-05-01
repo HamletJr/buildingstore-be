@@ -39,7 +39,12 @@ impl SessionRepository {
     }
 
     pub async fn delete_session(mut db: PoolConnection<Any>, session_key: Uuid) -> Result<(), sqlx::Error> {
-        todo!()
+        sqlx::query("DELETE FROM sessions WHERE session_key = $1")
+            .bind(session_key.to_string())
+            .execute(&mut *db)
+            .await?;
+
+        Ok(())
     }
 }
 
