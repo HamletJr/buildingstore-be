@@ -48,7 +48,27 @@ impl UserRepository {
     }
 
     pub async fn get_user_by_id(mut db: PoolConnection<Any>, user_id: i64) -> Result<User, sqlx::Error> {
-        todo!()
+        let row = sqlx::query("SELECT * FROM users WHERE id = $1")
+            .bind(user_id)
+            .fetch_one(&mut *db)
+            .await?;
+
+        let username: String = row.get("username");
+        let password: String = row.get("password");
+        let is_admin: bool = match row.try_get("is_admin") {
+            Ok(value) => value,
+            Err(_) => {
+                let is_admin_int: i32 = row.get("is_admin");
+                is_admin_int != 0
+            }
+        };
+
+        Ok(User {
+            id: user_id,
+            username,
+            password,
+            is_admin,
+        })
     }
 }
 
