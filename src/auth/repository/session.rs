@@ -37,6 +37,10 @@ impl SessionRepository {
                 .with_timezone(&chrono::Utc),
         })
     }
+
+    pub async fn delete_session(mut db: PoolConnection<Any>, session_key: Uuid) -> Result<(), sqlx::Error> {
+        todo!()
+    }
 }
 
 #[cfg(test)]
@@ -98,5 +102,18 @@ mod test {
         let db = setup().await;
         let result = UserRepository::get_user_by_username(db.acquire().await.unwrap(), "nonexistent_user").await;
         assert!(result.is_err());
+    }
+
+    #[async_test]
+    async fn test_delete_session() {
+        let db = setup().await;
+        let user = User::new("test_user".to_string(), "password".to_string(), false);
+
+        let session = Session::new(user.clone());
+        SessionRepository::create_session(db.acquire().await.unwrap(), session.clone()).await.unwrap();
+        let result = SessionRepository::delete_session(db.acquire().await.unwrap(), Uuid::parse_str(&session.session_key).unwrap()).await;
+        assert!(result.is_ok());
+        let retrieved_session = SessionRepository::get_session_by_key(db.acquire().await.unwrap(), Uuid::parse_str(&session.session_key).unwrap()).await;
+        assert!(retrieved_session.is_err());
     }
 }
