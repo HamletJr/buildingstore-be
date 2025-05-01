@@ -10,7 +10,7 @@ impl UserRepository {
         let row = sqlx::query("INSERT INTO users (username, password, is_admin) VALUES ($1, $2, $3) RETURNING id")
             .bind(&user.username)
             .bind(&user.password)
-            .bind(user.is_admin)
+            .bind(user.is_admin as i32)
             .fetch_one(&mut *db)
             .await?;
 

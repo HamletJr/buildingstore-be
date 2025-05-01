@@ -1,7 +1,11 @@
 use rocket::{get, post, State};
 use rocket::form::{Form, FromForm};
-use rocket::http::CookieJar;
+use rocket::http::{Status, Cookie, CookieJar};
 use sqlx::{Any, Pool};
+use uuid::Uuid;
+
+use crate::auth::model::user::User;
+use crate::auth::service::auth::AuthService;
 
 #[derive(FromForm)]
 pub struct AuthForm {
@@ -10,18 +14,43 @@ pub struct AuthForm {
 }
 
 #[post("/login", data = "<form>")]
-pub async fn login(form: Form<AuthForm>, cookies: &CookieJar<'_>, mut db: &State<Pool<Any>>) -> String {
-    todo!()
+pub async fn login(form: Form<AuthForm>, cookies: &CookieJar<'_>, db: &State<Pool<Any>>) -> Status {
+    let username = form.username.clone();
+    let password = form.password.clone();
+
+    let result = AuthService::login_user(db.inner().clone(), username, password).await;
+    match result {
+        Ok(session) => {
+            cookies.add_private(Cookie::new("session_key", session.session_key));
+            Status::Ok
+        },
+        Err(_) => Status::Unauthorized,
+    }
 }
 
 #[post("/register", data = "<form>")]
-pub async fn register(form: Form<AuthForm>, mut db: &State<Pool<Any>>) -> String {
-    todo!()
+pub async fn register(form: Form<AuthForm>, db: &State<Pool<Any>>) -> Status {
+    let username = form.username.clone();
+    let password = form.password.clone();
+    let is_admin = false; // Default to false for regular users
+
+    let user = User::new(username, password, is_admin);
+    let result = AuthService::register_user(db.inner().clone(), user).await;
+    match result {
+        Ok(_) => Status::Ok,
+        Err(_) => Status::BadRequest
+    }
 }
 
 #[get("/logout")]
-pub async fn logout(cookies: &CookieJar<'_>) -> String {
-    todo!()
+pub async fn logout(db: &State<Pool<Any>>, cookies: &CookieJar<'_>) -> Status {
+    let session_key = cookies.get_private("session_key").map(|c| c.value().to_string()).unwrap_or_default();
+    if session_key.is_empty() {
+        return Status::BadRequest;
+    }
+    AuthService::logout_user(db.inner().clone(), Uuid::try_parse(&session_key).unwrap()).await.unwrap();
+    cookies.remove_private(Cookie::build("session_key"));
+    Status::Ok
 }
 
 #[cfg(test)]
@@ -63,6 +92,23 @@ mod test {
             .dispatch()
             .await;
         assert_eq!(response.status(), Status::Ok);
+    }
+
+    #[async_test]
+    async fn test_register_existing_user() {
+        let rocket = setup().await;
+        let client = Client::tracked(rocket).await.expect("Must provice a valid Rocket instance");
+        client.post(uri!(super::register))
+            .header(rocket::http::ContentType::Form)
+            .body("username=testuser&password=testpass")
+            .dispatch()
+            .await;
+        let response = client.post(uri!(super::register))
+            .header(rocket::http::ContentType::Form)
+            .body("username=testuser&password=testpass")
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::BadRequest);
     }
 
     #[async_test]
@@ -122,6 +168,7 @@ mod test {
             .await;
         assert_eq!(response.status(), Status::Ok);
         let cookies = response.cookies();
-        assert!(cookies.get("session_key").is_none(), "Session cookie should be cleared");
+        let session_key = cookies.get("session_key").map(|c| c.value()).unwrap_or_default();
+        assert!(session_key.is_empty(), "Session cookie should be cleared");
     }
 }
