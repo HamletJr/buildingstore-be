@@ -1,20 +1,41 @@
-use sqlx::{Any, pool::PoolConnection};
+use sqlx::{Any, Pool};
+use uuid::Uuid;
+
 use crate::auth::model::user::User;
 use crate::auth::model::session::Session;
+use crate::auth::repository::user::UserRepository;
+use crate::auth::repository::session::SessionRepository;
 
 pub struct AuthService;
 
 impl AuthService {
-    pub async fn register_user(mut db: PoolConnection<Any>, user: User) -> Result<User, sqlx::Error> {
-        todo!()
+    pub async fn register_user(db: Pool<Any>, user: User) -> Result<User, sqlx::Error> {
+        let existing_user = UserRepository::get_user_by_username(db.acquire().await.unwrap(), &user.username).await;
+        if existing_user.is_ok() {
+            return Err(sqlx::Error::RowNotFound);
+        }
+        let new_user = UserRepository::create_user(db.acquire().await.unwrap(), user).await?;
+        Ok(new_user)
     }
 
-    pub async fn login_user(mut db: PoolConnection<Any>, user: User) -> Result<Session, sqlx::Error> {
-        todo!()
+    pub async fn login_user(db: Pool<Any>, username: String, password: String) -> Result<Session, sqlx::Error> {
+        let existing_user = UserRepository::get_user_by_username(db.acquire().await.unwrap(), &username).await;
+        if existing_user.is_err() {
+            return Err(sqlx::Error::RowNotFound);
+        }
+        let existing_user = existing_user.unwrap();
+        let is_password_valid = existing_user.verify_password(&password);
+        if !is_password_valid {
+            return Err(sqlx::Error::RowNotFound);
+        }
+        let session = Session::new(existing_user.clone());
+        SessionRepository::create_session(db.acquire().await.unwrap(), session.clone()).await?;
+        Ok(session)
     }
 
-    pub async fn logout_user(mut db: PoolConnection<Any>, user_id: i64) -> Result<(), sqlx::Error> {
-        todo!()
+    pub async fn logout_user(db: Pool<Any>, session_key: Uuid) -> Result<(), sqlx::Error> {
+        SessionRepository::delete_session(db.acquire().await.unwrap(), session_key).await?;
+        Ok(())
     }
 }
 
@@ -47,7 +68,7 @@ mod test {
         let db = setup().await;
         let user = User::new("test_user".to_string(), "password".to_string(), false);
 
-        let result = AuthService::register_user(db.acquire().await.unwrap(), user.clone()).await;
+        let result = AuthService::register_user(db, user.clone()).await;
         assert!(result.is_ok());
 
         let registered_user = result.unwrap();
@@ -58,10 +79,12 @@ mod test {
     #[async_test]
     async fn test_login_valid_user_credentials() {
         let db = setup().await;
-        let user = User::new("test_user".to_string(), "password".to_string(), false);
+        let username = "test_user".to_string();
+        let password = "password".to_string();
+        let mut user = User::new(username.clone(), password.clone(), false);
 
-        AuthService::register_user(db.acquire().await.unwrap(), user.clone()).await.unwrap();
-        let result = AuthService::login_user(db.acquire().await.unwrap(), user.clone()).await;
+        user = AuthService::register_user(db.clone(), user.clone()).await.unwrap();
+        let result = AuthService::login_user(db.clone(), username.clone(), password.clone()).await;
         assert!(result.is_ok());
 
         let session = result.unwrap();
@@ -71,44 +94,39 @@ mod test {
     #[async_test]
     async fn test_login_invalid_username() {
         let db = setup().await;
-        let user = User::new("test_user".to_string(), "password".to_string(), false);
+        let username = "test_user".to_string();
+        let password = "password".to_string();
+        let user = User::new(username.clone(), password.clone(), false);
 
-        AuthService::register_user(db.acquire().await.unwrap(), user.clone()).await.unwrap();
-        let invalid_user = User::new("invalid_user".to_string(), "wrong_password".to_string(), false);
+        AuthService::register_user(db.clone(), user.clone()).await.unwrap();
 
-        let result = AuthService::login_user(db.acquire().await.unwrap(), invalid_user.clone()).await;
+        let result = AuthService::login_user(db.clone(), "dummy".to_string(), password.clone()).await;
         assert!(result.is_err());
     }
 
     #[async_test]
     async fn test_login_invalid_password() {
         let db = setup().await;
-        let user = User::new("test_user".to_string(), "password".to_string(), false);
+        let username = "test_user".to_string();
+        let password = "password".to_string();
+        let user = User::new(username.clone(), password.clone(), false);
 
-        AuthService::register_user(db.acquire().await.unwrap(), user.clone()).await.unwrap();
-        let invalid_user = User::new("test_user".to_string(), "wrong_password".to_string(), false);
+        AuthService::register_user(db.clone(), user.clone()).await.unwrap();
 
-        let result = AuthService::login_user(db.acquire().await.unwrap(), invalid_user.clone()).await;
-        assert!(result.is_err());
-    }
-
-    #[async_test]
-    async fn test_login_invalid_user_and_password() {
-        let db = setup().await;
-        let user = User::new("test_user".to_string(), "password".to_string(), false);
-
-        let result = AuthService::login_user(db.acquire().await.unwrap(), user.clone()).await;
+        let result = AuthService::login_user(db.clone(), username.clone(), "dummypass".to_string()).await;
         assert!(result.is_err());
     }
 
     #[async_test]
     async fn test_logout_user() {
         let db = setup().await;
-        let user = User::new("test_user".to_string(), "password".to_string(), false);
+        let username = "test_user".to_string();
+        let password = "password".to_string();
+        let user = User::new(username.clone(), password.clone(), false);
 
-        AuthService::register_user(db.acquire().await.unwrap(), user.clone()).await.unwrap();
-        AuthService::login_user(db.acquire().await.unwrap(), user.clone()).await.unwrap();
-        let result = AuthService::logout_user(db.acquire().await.unwrap(), user.id).await;
+        AuthService::register_user(db.clone(), user.clone()).await.unwrap();
+        let session = AuthService::login_user(db.clone(), username.clone(), password.clone()).await.unwrap();
+        let result = AuthService::logout_user(db.clone(), Uuid::try_parse(&session.session_key).unwrap()).await;
         assert!(result.is_ok());
     }
 }
