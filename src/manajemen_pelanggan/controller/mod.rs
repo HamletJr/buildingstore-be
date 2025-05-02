@@ -1,4 +1,4 @@
-use rocket::fairing::AdHoc;
+use rocket::{fairing::AdHoc, routes};
 
 pub mod pelanggan;
 
