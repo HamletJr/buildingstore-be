@@ -1,3 +1,26 @@
+#[derive(Debug, Clone, PartialEq)]
+pub enum PaymentStatus {
+    Paid,    // LUNAS
+    Installment,  // CICILAN
+}
+
+impl PaymentStatus {
+    pub fn from_string(status: &str) -> Option<Self> {
+        match status.to_uppercase().as_str() {
+            "LUNAS" => Some(PaymentStatus::Paid),
+            "CICILAN" => Some(PaymentStatus::Installment),
+            _ => None,
+        }
+    }
+    
+    pub fn to_string(&self) -> String {
+        match self {
+            PaymentStatus::Paid => "LUNAS".to_string(),
+            PaymentStatus::Installment => "CICILAN".to_string(),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
