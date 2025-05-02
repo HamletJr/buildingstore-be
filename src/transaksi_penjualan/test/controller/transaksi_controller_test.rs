@@ -3,7 +3,6 @@ mod transaksi_controller_tests {
     use crate::main::controller::transaksi_controller::TransaksiController;
     use crate::main::repository::transaksi_repository_impl::TransaksiRepositoryImpl;
     use crate::main::service::transaksi_service::TransaksiService;
-    use std::collections::HashMap;
     use std::sync::Arc;
 
     fn setup_controller() -> TransaksiController {
