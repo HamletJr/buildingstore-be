@@ -1,3 +1,4 @@
+use sqlx::any::AnyRow;
 use sqlx::{Any, pool::PoolConnection};
 use sqlx::Row;
 use chrono::NaiveDate;
@@ -20,13 +21,7 @@ impl PelangganRepository {
             .fetch_one(&mut *db)
             .await?;
         
-        let pelanggan = Pelanggan {
-            id: result.get("id"),
-            nama: result.get("nama"),
-            alamat: result.get("alamat"),
-            no_telp: result.get("no_telp"),
-            tanggal_gabung: NaiveDate::parse_from_str(&result.get::<String, _>("tanggal_gabung"), "%Y-%m-%d").unwrap(),
-        };
+        let pelanggan = Self::parse_row_to_pelanggan(result);
 
         Ok(pelanggan)
     }
@@ -41,24 +36,18 @@ impl PelangganRepository {
             .fetch_one(&mut *db)
             .await?;
         
-        let pelanggan = Pelanggan {
-            id: result.get("id"),
-            nama: result.get("nama"),
-            alamat: result.get("alamat"),
-            no_telp: result.get("no_telp"),
-            tanggal_gabung: NaiveDate::parse_from_str(&result.get::<String, _>("tanggal_gabung"), "%Y-%m-%d").unwrap(),
-        };
+        let pelanggan = Self::parse_row_to_pelanggan(result);
 
         Ok(pelanggan)
     }
 
     pub async fn update_pelanggan(mut db: PoolConnection<Any>, pelanggan: &Pelanggan) -> Result<Pelanggan, sqlx::Error> {
         let result = sqlx::query("
-                UPDATE pelanggan
-                SET nama = $1, alamat = $2, no_telp = $3, tanggal_gabung = $4
-                WHERE id = $5
-                RETURNING id, nama, alamat, no_telp, tanggal_gabung
-            ")
+        UPDATE pelanggan
+        SET nama = $1, alamat = $2, no_telp = $3, tanggal_gabung = $4
+        WHERE id = $5
+        RETURNING id, nama, alamat, no_telp, tanggal_gabung
+        ")
             .bind(&pelanggan.nama)
             .bind(&pelanggan.alamat)
             .bind(&pelanggan.no_telp)
@@ -67,29 +56,23 @@ impl PelangganRepository {
             .fetch_one(&mut *db)
             .await?;
         
-        let pelanggan = Pelanggan {
-            id: result.get("id"),
-            nama: result.get("nama"),
-            alamat: result.get("alamat"),
-            no_telp: result.get("no_telp"),
-            tanggal_gabung: NaiveDate::parse_from_str(&result.get::<String, _>("tanggal_gabung"), "%Y-%m-%d").unwrap(),
-        };
+        let pelanggan = Self::parse_row_to_pelanggan(result);
 
         Ok(pelanggan)
     }
-
+    
     pub async fn delete_pelanggan(mut db: PoolConnection<Any>, id: i32) -> Result<(), sqlx::Error> {
         sqlx::query("
-                DELETE FROM pelanggan
+        DELETE FROM pelanggan
                 WHERE id = $1
-            ")
+                ")
             .bind(id)
             .execute(&mut *db)
             .await?;
-
+        
         Ok(())
     }
-
+    
     pub async fn get_all_pelanggan(mut db: PoolConnection<Any>) -> Result<Vec<Pelanggan>, sqlx::Error> {
         let rows = sqlx::query("
                 SELECT id, nama, alamat, no_telp, tanggal_gabung
@@ -100,17 +83,21 @@ impl PelangganRepository {
         
         let mut pelanggan_list = Vec::new();
         for row in rows {
-            let pelanggan = Pelanggan {
-                id: row.get("id"),
-                nama: row.get("nama"),
-                alamat: row.get("alamat"),
-                no_telp: row.get("no_telp"),
-                tanggal_gabung: NaiveDate::parse_from_str(&row.get::<String, _>("tanggal_gabung"), "%Y-%m-%d").unwrap(),
-            };
+            let pelanggan = Self::parse_row_to_pelanggan(row);
             pelanggan_list.push(pelanggan);
         }
-
+        
         Ok(pelanggan_list)
+    }
+
+    fn parse_row_to_pelanggan(row: AnyRow) -> Pelanggan {
+        Pelanggan {
+            id: row.get("id"),
+            nama: row.get("nama"),
+            alamat: row.get("alamat"),
+            no_telp: row.get("no_telp"),
+            tanggal_gabung: NaiveDate::parse_from_str(&row.get::<String, _>("tanggal_gabung"), "%Y-%m-%d").unwrap(),
+        }
     }
 }
 
