@@ -1,6 +1,5 @@
-use crate::main::model::transaksi::Transaksi;
-use crate::main::repository::transaksi_repository::TransaksiRepository;
-use crate::main::service::transaksi_service::TransaksiService;
+use crate::transaksi_penjualan::main::model::transaksi::Transaksi;
+use crate::transaksi_penjualan::main::service::transaksi_service::TransaksiService;
 use std::collections::HashMap;
 use std::sync::Arc;
 

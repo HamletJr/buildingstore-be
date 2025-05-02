@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod transaksi_service_tests {
-    use crate::main::enums::status_transaksi::StatusTransaksi;
-    use crate::main::repository::transaksi_repository_impl::TransaksiRepositoryImpl;
-    use crate::main::service::transaksi_service::TransaksiService;
+    use crate::transaksi_penjualan::main::enums::status_transaksi::StatusTransaksi;
+    use crate::transaksi_penjualan::main::repository::transaksi_repository_impl::TransaksiRepositoryImpl;
+    use crate::transaksi_penjualan::main::service::transaksi_service::TransaksiService;
     use std::sync::Arc;
 
     fn setup_service() -> TransaksiService {

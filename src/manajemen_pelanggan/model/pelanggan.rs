@@ -7,7 +7,7 @@ use chrono::{ Utc, NaiveDate };
 /// ID and join date will be automatically initialized.
 #[derive(Debug, Clone)]
 pub struct Pelanggan {
-    pub id: usize,
+    pub id: i32,
     pub nama: String,
     pub alamat: String,
     pub no_telp: String,
