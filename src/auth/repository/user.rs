@@ -1,74 +1,61 @@
-use rocket_db_pools::sqlx;
-use sqlx::{Any, Row};
-use sqlx::pool::PoolConnection;
+use entity::users::Entity as Users;
+use entity::users::Model as UserModel;
+use entity::users::ActiveModel as UserActiveModel;
+use sea_orm::{DbErr, DatabaseConnection, EntityTrait, ActiveModelTrait, QueryFilter, ColumnTrait};
+use sea_orm::ActiveValue::{Set, NotSet};
 use crate::auth::model::user::User;
 
 pub struct UserRepository;
 
 impl UserRepository {
-    pub async fn create_user(mut db: PoolConnection<Any>, user: User) -> Result<User, sqlx::Error> {
-        let row = sqlx::query("INSERT INTO users (username, password, is_admin) VALUES ($1, $2, $3) RETURNING id")
-            .bind(&user.username)
-            .bind(&user.password)
-            .bind(user.is_admin as i32)
-            .fetch_one(&mut *db)
-            .await?;
+    pub async fn create_user(db: &DatabaseConnection, user: User) -> Result<User, DbErr> {
+        let user = UserActiveModel {
+            id: NotSet,
+            username: Set(user.username),
+            password: Set(user.password),
+            is_admin: Set(user.is_admin),
+        };
 
-        let id: i64 = row.get("id");
+        let user: UserModel  = user.insert(db).await?;
         Ok(User {
-            id,
+            id: user.id,
             username: user.username,
             password: user.password,
             is_admin: user.is_admin,
         })
     }
 
-    pub async fn get_user_by_username(mut db: PoolConnection<Any>, username: &str) -> Result<User, sqlx::Error> {
-        let row = sqlx::query("SELECT * FROM users WHERE username = $1")
-            .bind(username)
-            .fetch_one(&mut *db)
+    pub async fn get_user_by_username(db: &DatabaseConnection, username: &str) -> Result<User, DbErr> {
+        let user = Users::find()
+            .filter(entity::users::Column::Username.eq(username))
+            .one(db)
             .await?;
-
-        let id: i64 = row.get("id");
-        let password: String = row.get("password");
-        let is_admin: bool = match row.try_get("is_admin") {
-            Ok(value) => value,
-            Err(_) => {
-                let is_admin_int: i32 = row.get("is_admin");
-                is_admin_int != 0
-            }
-        };
-
-        Ok(User {
-            id,
-            username: username.to_string(),
-            password,
-            is_admin,
-        })
+            
+        match user {
+            Some(user) => Ok(User {
+                id: user.id,
+                username: user.username,
+                password: user.password,
+                is_admin: user.is_admin,
+            }),
+            None => Err(DbErr::Custom("User not found".to_string())),
+        }
     }
 
-    pub async fn get_user_by_id(mut db: PoolConnection<Any>, user_id: i64) -> Result<User, sqlx::Error> {
-        let row = sqlx::query("SELECT * FROM users WHERE id = $1")
-            .bind(user_id)
-            .fetch_one(&mut *db)
+    pub async fn get_user_by_id(db: &DatabaseConnection, user_id: i32) -> Result<User, DbErr> {
+        let user = Users::find_by_id(user_id)
+            .one(db)
             .await?;
 
-        let username: String = row.get("username");
-        let password: String = row.get("password");
-        let is_admin: bool = match row.try_get("is_admin") {
-            Ok(value) => value,
-            Err(_) => {
-                let is_admin_int: i32 = row.get("is_admin");
-                is_admin_int != 0
-            }
-        };
-
-        Ok(User {
-            id: user_id,
-            username,
-            password,
-            is_admin,
-        })
+        match user {
+            Some(user) => Ok(User {
+                id: user.id,
+                username: user.username,
+                password: user.password,
+                is_admin: user.is_admin,
+            }),
+            None => Err(DbErr::Custom("User not found".to_string())),
+        }
     }
 }
 
@@ -76,21 +63,13 @@ impl UserRepository {
 mod test {
     use super::*;
     use rocket::async_test;
-    use sqlx::any::install_default_drivers;
-    use sqlx::Pool;
+    use sea_orm::{Database, DatabaseConnection};
+    use migration::{Migrator, MigratorTrait};
 
-    async fn setup() -> Pool<Any> {
-        install_default_drivers();
-        let db = sqlx::any::AnyPoolOptions::new()
-            .max_connections(1)
-            .connect("sqlite::memory:")
-            .await
-            .unwrap();
+    async fn setup() -> DatabaseConnection {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
 
-        sqlx::migrate!("migrations/test")
-            .run(&db)
-            .await
-            .unwrap();
+        Migrator::up(&db, None).await.unwrap();
 
         db
     }
@@ -100,7 +79,7 @@ mod test {
         let db = setup().await;
         let user = User::new("test_user".to_string(), "password".to_string(), false);
 
-        let result = UserRepository::create_user(db.acquire().await.unwrap(), user.clone()).await;
+        let result = UserRepository::create_user(&db, user.clone()).await;
         assert!(result.is_ok());
         let created_user = result.unwrap();
         assert_eq!(created_user.username, user.username);
@@ -112,8 +91,8 @@ mod test {
         let db = setup().await;
         let user = User::new("test_user".to_string(), "password".to_string(), false);
 
-        UserRepository::create_user(db.acquire().await.unwrap(), user.clone()).await.unwrap();
-        let result = UserRepository::get_user_by_username(db.acquire().await.unwrap(), &user.username).await;
+        UserRepository::create_user(&db, user.clone()).await.unwrap();
+        let result = UserRepository::get_user_by_username(&db, &user.username).await;
         assert!(result.is_ok());
         let fetched_user = result.unwrap();
         assert_eq!(fetched_user.username, user.username);
@@ -123,7 +102,7 @@ mod test {
     #[async_test]
     async fn test_get_user_by_nonexistent_username() {
         let db = setup().await;
-        let result = UserRepository::get_user_by_username(db.acquire().await.unwrap(), "nonexistent_user").await;
+        let result = UserRepository::get_user_by_username(&db, "nonexistent_user").await;
         assert!(result.is_err());
     }
 
@@ -132,8 +111,8 @@ mod test {
         let db = setup().await;
         let user = User::new("test_user".to_string(), "password".to_string(), false);
 
-        let created_user = UserRepository::create_user(db.acquire().await.unwrap(), user.clone()).await.unwrap();
-        let result = UserRepository::get_user_by_id(db.acquire().await.unwrap(), created_user.id).await;
+        let created_user = UserRepository::create_user(&db, user.clone()).await.unwrap();
+        let result = UserRepository::get_user_by_id(&db, created_user.id).await;
         assert!(result.is_ok());
         let fetched_user = result.unwrap();
         assert_eq!(fetched_user.username, user.username);
@@ -143,7 +122,7 @@ mod test {
     #[async_test]
     async fn test_get_user_by_nonexistent_id() {
         let db = setup().await;
-        let result = UserRepository::get_user_by_id(db.acquire().await.unwrap(), 999).await;
+        let result = UserRepository::get_user_by_id(&db, 999).await;
         assert!(result.is_err());
     }
 }

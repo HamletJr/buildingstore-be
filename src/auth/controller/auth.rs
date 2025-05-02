@@ -1,7 +1,7 @@
 use rocket::{get, post, State};
 use rocket::form::{Form, FromForm};
 use rocket::http::{Status, Cookie, CookieJar};
-use sqlx::{Any, Pool};
+use sea_orm::DatabaseConnection;
 use uuid::Uuid;
 
 use crate::auth::model::user::User;
@@ -14,11 +14,11 @@ pub struct AuthForm {
 }
 
 #[post("/login", data = "<form>")]
-pub async fn login(form: Form<AuthForm>, cookies: &CookieJar<'_>, db: &State<Pool<Any>>) -> Status {
+pub async fn login(form: Form<AuthForm>, cookies: &CookieJar<'_>, db: &State<DatabaseConnection>) -> Status {
     let username = form.username.clone();
     let password = form.password.clone();
 
-    let result = AuthService::login_user(db.inner().clone(), username, password).await;
+    let result = AuthService::login_user(&db, username, password).await;
     match result {
         Ok(session) => {
             cookies.add_private(Cookie::new("session_key", session.session_key));
@@ -29,13 +29,13 @@ pub async fn login(form: Form<AuthForm>, cookies: &CookieJar<'_>, db: &State<Poo
 }
 
 #[post("/register", data = "<form>")]
-pub async fn register(form: Form<AuthForm>, db: &State<Pool<Any>>) -> Status {
+pub async fn register(form: Form<AuthForm>, db: &State<DatabaseConnection>) -> Status {
     let username = form.username.clone();
     let password = form.password.clone();
     let is_admin = false; // Default to false for regular users
 
     let user = User::new(username, password, is_admin);
-    let result = AuthService::register_user(db.inner().clone(), user).await;
+    let result = AuthService::register_user(&db, user).await;
     match result {
         Ok(_) => Status::Ok,
         Err(_) => Status::BadRequest
@@ -43,12 +43,12 @@ pub async fn register(form: Form<AuthForm>, db: &State<Pool<Any>>) -> Status {
 }
 
 #[get("/logout")]
-pub async fn logout(db: &State<Pool<Any>>, cookies: &CookieJar<'_>) -> Status {
+pub async fn logout(db: &State<DatabaseConnection>, cookies: &CookieJar<'_>) -> Status {
     let session_key = cookies.get_private("session_key").map(|c| c.value().to_string()).unwrap_or_default();
     if session_key.is_empty() {
         return Status::BadRequest;
     }
-    AuthService::logout_user(db.inner().clone(), Uuid::try_parse(&session_key).unwrap()).await.unwrap();
+    AuthService::logout_user(&db, Uuid::try_parse(&session_key).unwrap()).await.unwrap();
     cookies.remove_private(Cookie::build("session_key"));
     Status::Ok
 }
@@ -59,24 +59,17 @@ mod test {
     use rocket::local::asynchronous::Client;
     use rocket::http::Status;
     use rocket::{routes, uri, Rocket, async_test};
-    use sqlx::any::install_default_drivers;
+    use sea_orm::Database;
+    use migration::{Migrator, MigratorTrait};
+    
 
     async fn setup() -> Rocket<rocket::Build> {
-        install_default_drivers();
-        let db = sqlx::any::AnyPoolOptions::new()
-            .max_connections(1)
-            .connect("sqlite::memory:")
-            .await
-            .unwrap();
-
-        sqlx::migrate!("migrations/test")
-            .run(&db)
-            .await
-            .unwrap();
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        Migrator::up(&db, None).await.unwrap();
 
         let rocket = rocket::build()
             .manage(reqwest::Client::builder().build().unwrap())
-            .manage(db.clone())
+            .manage(db)
             .mount("/", routes![login, register, logout]);
 
         rocket

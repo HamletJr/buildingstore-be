@@ -1,50 +1,54 @@
-use rocket_db_pools::sqlx;
-use sqlx::{Any, Row};
-use sqlx::pool::PoolConnection;
+use entity::sessions::Entity as Sessions;
+use entity::sessions::Model as SessionModel;
+use entity::sessions::ActiveModel as SessionActiveModel;
+use sea_orm::{DbErr, DatabaseConnection, EntityTrait, ActiveModelTrait};
+use sea_orm::ActiveValue::Set;
 use uuid::Uuid;
-use chrono::DateTime;
 use crate::auth::model::session::Session;
 
 pub struct SessionRepository;
 
 impl SessionRepository {
-    pub async fn create_session(mut db: PoolConnection<Any>, session: Session) -> Result<Session, sqlx::Error> {
-        sqlx::query("INSERT INTO sessions (session_key, user_id, expires_at) VALUES ($1, $2, $3)")
-            .bind(&session.session_key)
-            .bind(&session.user_id)
-            .bind(&session.expires_at.to_rfc3339())
-            .execute(&mut *db)
-            .await?;
+    pub async fn create_session(db: &DatabaseConnection, session: Session) -> Result<Session, DbErr> {
+        let session = SessionActiveModel {
+            session_key: Set(Uuid::try_parse(&session.session_key).unwrap()),
+            user_id: Set(session.user_id),
+            expires_at: Set(session.expires_at),
+        };
 
-        Ok(session)
-    }
-
-    pub async fn get_session_by_key(mut db: PoolConnection<Any>, session_key: Uuid) -> Result<Session, sqlx::Error> {
-        let row = sqlx::query("SELECT * FROM sessions WHERE session_key = $1")
-            .bind(session_key.to_string())
-            .fetch_one(&mut *db)
-            .await?;
-
-        let session_key: String = row.get("session_key");
-        let user_id: i64 = row.get("user_id");
-        let expires_at: String = row.get("expires_at");
+        let session: SessionModel = session.insert(db).await?;
 
         Ok(Session {
-            session_key,
-            user_id,
-            expires_at: DateTime::parse_from_rfc3339(&expires_at)
-                .expect("Failed to parse expires_at")
-                .with_timezone(&chrono::Utc),
+            session_key: session.session_key.to_string(),
+            user_id: session.user_id,
+            expires_at: session.expires_at,
         })
     }
 
-    pub async fn delete_session(mut db: PoolConnection<Any>, session_key: Uuid) -> Result<(), sqlx::Error> {
-        sqlx::query("DELETE FROM sessions WHERE session_key = $1")
-            .bind(session_key.to_string())
-            .execute(&mut *db)
+    pub async fn get_session_by_key(db: &DatabaseConnection, session_key: Uuid) -> Result<Session, DbErr> {
+        let session = Sessions::find_by_id(session_key)
+            .one(db)
             .await?;
 
-        Ok(())
+        match session {
+            Some(session) => Ok(Session {
+                session_key: session.session_key.to_string(),
+                user_id: session.user_id,
+                expires_at: session.expires_at,
+            }),
+            None => Err(DbErr::Custom("Session not found".to_string())),
+        }
+    }
+
+    pub async fn delete_session(db: &DatabaseConnection, session_key: Uuid) -> Result<(), DbErr> {
+        let res = Sessions::delete_by_id(session_key)
+            .exec(db)
+            .await?;
+
+        match res.rows_affected {
+            0 => Err(DbErr::Custom("Session not found".to_string())),
+            _ => Ok(()),
+        }
     }
 }
 
@@ -52,23 +56,14 @@ impl SessionRepository {
 mod test {
     use super::*;
     use rocket::async_test;
-    use sqlx::any::install_default_drivers;
-    use sqlx::Pool;
+    use sea_orm::{Database, DatabaseConnection};
+    use migration::{Migrator, MigratorTrait};
     use crate::auth::model::user::User;
     use crate::auth::repository::user::UserRepository;
 
-    async fn setup() -> Pool<Any> {
-        install_default_drivers();
-        let db = sqlx::any::AnyPoolOptions::new()
-            .max_connections(1)
-            .connect("sqlite::memory:")
-            .await
-            .unwrap();
-
-        sqlx::migrate!("migrations/test")
-            .run(&db)
-            .await
-            .unwrap();
+    async fn setup() -> DatabaseConnection {
+        let db = Database::connect("sqlite::memory:").await.unwrap();
+        Migrator::up(&db, None).await.unwrap();
 
         db
     }
@@ -77,10 +72,12 @@ mod test {
     async fn test_create_session() {
         let db = setup().await;
         let user = User::new("test_user".to_string(), "password".to_string(), false);
-
-        let session = Session::new(user.clone());
-        let result = SessionRepository::create_session(db.acquire().await.unwrap(), session.clone()).await;
+        let result = UserRepository::create_user(&db, user.clone()).await.unwrap();
+        
+        let session = Session::new(result.clone());
+        let result = SessionRepository::create_session(&db, session.clone()).await;
         assert!(result.is_ok());
+        
         let fetched_session = result.unwrap();
         assert_eq!(fetched_session.session_key, session.session_key);
         assert_eq!(fetched_session.user_id, session.user_id);
@@ -91,11 +88,13 @@ mod test {
     async fn test_get_session_by_key() {
         let db = setup().await;
         let user = User::new("test_user".to_string(), "password".to_string(), false);
+        let result = UserRepository::create_user(&db, user.clone()).await.unwrap();
 
-        let session = Session::new(user.clone());
-        SessionRepository::create_session(db.acquire().await.unwrap(), session.clone()).await.unwrap();
-        let retrieved_session = SessionRepository::get_session_by_key(db.acquire().await.unwrap(), Uuid::parse_str(&session.session_key).unwrap()).await;
+        let session = Session::new(result.clone());
+        SessionRepository::create_session(&db, session.clone()).await.unwrap();
+        let retrieved_session = SessionRepository::get_session_by_key(&db, Uuid::parse_str(&session.session_key).unwrap()).await;
         assert!(retrieved_session.is_ok());
+        
         let fetched_session = retrieved_session.unwrap();
         assert_eq!(fetched_session.session_key, session.session_key);
         assert_eq!(fetched_session.user_id, session.user_id);
@@ -105,7 +104,7 @@ mod test {
     #[async_test]
     async fn test_get_session_by_nonexistent_key() {
         let db = setup().await;
-        let result = UserRepository::get_user_by_username(db.acquire().await.unwrap(), "nonexistent_user").await;
+        let result = UserRepository::get_user_by_username(&db, "nonexistent_user").await;
         assert!(result.is_err());
     }
 
@@ -113,12 +112,14 @@ mod test {
     async fn test_delete_session() {
         let db = setup().await;
         let user = User::new("test_user".to_string(), "password".to_string(), false);
+        let result = UserRepository::create_user(&db, user.clone()).await.unwrap();
 
-        let session = Session::new(user.clone());
-        SessionRepository::create_session(db.acquire().await.unwrap(), session.clone()).await.unwrap();
-        let result = SessionRepository::delete_session(db.acquire().await.unwrap(), Uuid::parse_str(&session.session_key).unwrap()).await;
+        let session = Session::new(result.clone());
+        SessionRepository::create_session(&db, session.clone()).await.unwrap();
+        let result = SessionRepository::delete_session(&db, Uuid::parse_str(&session.session_key).unwrap()).await;
         assert!(result.is_ok());
-        let retrieved_session = SessionRepository::get_session_by_key(db.acquire().await.unwrap(), Uuid::parse_str(&session.session_key).unwrap()).await;
+        
+        let retrieved_session = SessionRepository::get_session_by_key(&db, Uuid::parse_str(&session.session_key).unwrap()).await;
         assert!(retrieved_session.is_err());
     }
 }

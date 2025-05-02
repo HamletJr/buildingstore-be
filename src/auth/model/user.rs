@@ -3,7 +3,7 @@ use rocket::serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(crate = "rocket::serde")]
 pub struct User {
-    pub id: i64,
+    pub id: i32,
     pub username: String,
     pub password: String,
     pub is_admin: bool,

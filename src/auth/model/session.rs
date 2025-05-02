@@ -1,14 +1,14 @@
 use rocket::serde::{Deserialize, Serialize};
 use uuid::Uuid;
-use chrono::{DateTime, Utc};
+use chrono::{NaiveDateTime, Utc};
 use crate::auth::model::user::User;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(crate = "rocket::serde")]
 pub struct Session {
     pub session_key: String,
-    pub user_id: i64,
-    pub expires_at: DateTime<Utc>,
+    pub user_id: i32,
+    pub expires_at: NaiveDateTime,
 }
 
 impl Session {
@@ -16,12 +16,12 @@ impl Session {
         Session {
             session_key: Uuid::new_v4().to_string(),
             user_id: user.id,
-            expires_at: Utc::now() + chrono::Duration::hours(24),
+            expires_at: Utc::now().naive_utc() + chrono::Duration::hours(24),
         }
     }
 
     pub fn is_valid(&self) -> bool {
-        Utc::now() < self.expires_at
+        self.expires_at > Utc::now().naive_utc()
     }
 
     pub fn generate_session_key() -> String {
@@ -52,7 +52,7 @@ mod test {
     fn test_session_is_not_valid() {
         let user = User::new("test_user".to_string(), "password".to_string(), false);
         let mut session = Session::new(user.clone());
-        session.expires_at = Utc::now() - chrono::Duration::hours(1);
+        session.expires_at = Utc::now().naive_utc() - chrono::Duration::hours(1);
         assert!(!session.is_valid());
     }
 
