@@ -1,4 +1,3 @@
-// File: src/manajemen_produk/produk/controller.rs
 use rocket::serde::{Deserialize, Serialize, json::Json};
 use rocket_db_pools::Connection;
 use crate::BuildingStoreDB;

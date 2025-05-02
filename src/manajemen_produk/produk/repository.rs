@@ -1,4 +1,3 @@
-// File: src/manajemen_produk/produk/repository.rs
 use rocket_db_pools::Connection;
 use rocket_db_pools::sqlx::{self, PgPool, Row, Error};
 use crate::BuildingStoreDB;

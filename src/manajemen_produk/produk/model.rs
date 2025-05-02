@@ -1,7 +1,8 @@
-// File: src/manajemen_produk/produk/model.rs
 use std::sync::{Arc, Mutex, Once};
 use std::collections::HashMap;
 use lazy_static::lazy_static;
+use validation::{ProdukValidator};
+use crate::manajemen_produk::produk::validation::ProdukValidator;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Produk {
@@ -331,20 +332,18 @@ pub fn validate_produk(
     nama: &str,
     kategori: &str,
     harga: f64,
-    _stok: u32,
-    _deskripsi: &Option<String>,
+    stok: u32,
+    deskripsi: &Option<String>,
 ) -> Result<(), &'static str> {
-    if nama.trim().is_empty() {
-        return Err("Nama produk tidak boleh kosong");
+    let produk = Produk::new(
+        nama.to_string(),
+        kategori.to_string(),
+        harga,
+        stok,
+        deskripsi.clone(),
+    );
+    match ProdukValidator::default().validate(&produk) {
+        Ok(_) => Ok(()),
+        Err(errors) => Err(errors.first().map(|s| s.as_str()).unwrap_or("Validasi gagal")),
     }
-    
-    if kategori.trim().is_empty() {
-        return Err("Kategori produk tidak boleh kosong");
-    }
-    
-    if harga < 0.0 {
-        return Err("Harga produk tidak boleh negatif");
-    }
-    
-    Ok(())
 }

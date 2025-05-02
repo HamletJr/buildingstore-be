@@ -25,3 +25,31 @@ impl ValidationRule for HargaNonNegatif {
         }
     }
 }
+
+pub struct ProdukValidator {
+    rules: Vec<Box<dyn ValidationRule>>,
+}
+
+impl ProdukValidator {
+    pub fn default() -> Self {
+        Self {
+            rules: vec![
+                Box::new(NamaNotEmpty),
+                Box::new(HargaNonNegatif),
+            ],
+        }
+    }
+
+    pub fn validate(&self, produk: &Produk) -> Result<(), Vec<String>> {
+        let errors = self.rules
+            .iter()
+            .filter_map(|rule| rule.validate(produk).err())
+            .collect::<Vec<_>>();
+
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors)
+        }
+    }
+}
