@@ -3,6 +3,8 @@ use rocket_db_pools::Connection;
 use crate::BuildingStoreDB;
 use super::model::{Produk, ProdukBuilder, get_produk_factory_registry, get_produk_template_pool};
 use super::repository::ProdukRepository;
+use super::events::AuditLogObserver;
+use std::sync::Arc;
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(crate = "rocket::serde")]
@@ -499,6 +501,49 @@ pub async fn clone_produk_with_price(
     }
 }
 
+#[post("/produk/<id>/update_stock", format = "json", data = "<new_stok>")]
+pub async fn update_stock(
+    id: i64,
+    new_stok: Json<u32>,
+    mut db: Connection<BuildingStoreDB>,
+) -> Json<ApiResponse<()>> {
+    match ProdukRepository::ambil_produk_by_id(&mut **db, id).await {
+        Ok(Some(mut produk)) => {
+            // Tambahkan observer audit log
+            produk.add_observer(Arc::new(AuditLogObserver {
+                db: db.clone().into_inner(), // pastikan `AuditLogObserver` menerima `PgPool`, bukan Connection
+            }));
+
+            // Update stok dan trigger observer
+            produk.set_stok(*new_stok);
+
+            // Simpan ke database
+            match ProdukRepository::update_produk(&mut **db, id, &produk).await {
+                Ok(_) => Json(ApiResponse {
+                    success: true,
+                    message: Some("Stok produk berhasil diperbarui".into()),
+                    data: None,
+                }),
+                Err(e) => Json(ApiResponse {
+                    success: false,
+                    message: Some(format!("Gagal menyimpan perubahan stok: {}", e)),
+                    data: None,
+                }),
+            }
+        }
+        Ok(None) => Json(ApiResponse {
+            success: false,
+            message: Some(format!("Produk ID {} tidak ditemukan", id)),
+            data: None,
+        }),
+        Err(e) => Json(ApiResponse {
+            success: false,
+            message: Some(format!("Gagal mengambil produk: {}", e)),
+            data: None,
+        }),
+    }
+}
+
 // Fungsi untuk mendaftarkan semua routes
 pub fn routes() -> Vec<rocket::Route> {
     routes![
@@ -512,6 +557,7 @@ pub fn routes() -> Vec<rocket::Route> {
         filter_produk_by_kategori,
         filter_produk_by_price,
         filter_produk_by_stock,
-        clone_produk_with_price
+        clone_produk_with_price,
+        update_stock,
     ]
 }
