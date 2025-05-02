@@ -3,7 +3,9 @@ mod tests {
     use std::sync::{Arc, Mutex};
     use chrono::Utc;
     use crate::manajemen_supplier::main::model::supplier::Supplier;
-    use crate::manajemen_supplier::main::service::supplier_dispatcher::{SupplierDispatcher, SupplierObserver, SupplierNotifier};
+    use crate::manajemen_supplier::main::service::supplier_dispatcher::SupplierDispatcher;
+    use crate::manajemen_supplier::main::service::supplier_notifier::SupplierNotifier;
+    use crate::manajemen_supplier::main::service::supplier_observer::SupplierObserver;
 
     struct MockObserver {
         pub called: Arc<Mutex<bool>>,

@@ -8,7 +8,7 @@ mod tests {
     use crate::manajemen_supplier::main::repository::supplier_repository::SupplierRepository;
     use crate::manajemen_supplier::main::service::supplier_service_impl::SupplierServiceImpl;
     use crate::manajemen_supplier::main::service::supplier_service::SupplierService;
-    use crate::manajemen_supplier::main::service::supplier_dispatcher::SupplierNotifier;
+    use crate::manajemen_supplier::main::service::supplier_notifier::SupplierNotifier;
 
     struct MockNotifier;
 

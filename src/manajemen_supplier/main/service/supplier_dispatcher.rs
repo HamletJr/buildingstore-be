@@ -1,15 +1,9 @@
 use std::sync::{Arc, Mutex};
 
 use crate::manajemen_supplier::main::model::supplier::Supplier;
+use crate::manajemen_supplier::main::service::supplier_notifier::SupplierNotifier;
+use crate::manajemen_supplier::main::service::supplier_observer::SupplierObserver;
 
-
-pub trait SupplierObserver: Send + Sync {
-    fn on_supplier_saved(&self, supplier: &Supplier);
-}
-
-pub trait SupplierNotifier: Send + Sync {
-    fn notify_supplier_saved(&self, supplier: &Supplier);
-}
 
 impl SupplierNotifier for SupplierDispatcher {
     fn notify_supplier_saved(&self, supplier: &Supplier) {

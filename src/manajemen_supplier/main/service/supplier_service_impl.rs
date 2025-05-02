@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use crate::manajemen_supplier::main::model::supplier::Supplier;
 use crate::manajemen_supplier::main::repository::supplier_repository::SupplierRepository;
-use crate::manajemen_supplier::main::service::supplier_dispatcher::SupplierNotifier;
+use crate::manajemen_supplier::main::service::supplier_notifier::SupplierNotifier;
 use crate::manajemen_supplier::main::service::supplier_service::SupplierService;
 
 pub struct SupplierServiceImpl {
