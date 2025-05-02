@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
-use crate::main::enums::status_transaksi::StatusTransaksi;
-use crate::main::model::transaksi::Transaksi;
-use crate::main::repository::transaksi_repository::TransaksiRepository;
+use crate::transaksi_penjualan::main::enums::status_transaksi::StatusTransaksi;
+use crate::transaksi_penjualan::main::model::transaksi::Transaksi;
+use crate::transaksi_penjualan::main::repository::transaksi_repository::TransaksiRepository;
 
 pub struct TransaksiRepositoryImpl {
     transaksi_map: Arc<Mutex<HashMap<String, Transaksi>>>,
