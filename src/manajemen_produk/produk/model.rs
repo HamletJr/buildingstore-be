@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use lazy_static::lazy_static;
 use validation::{ProdukValidator};
 use crate::manajemen_produk::produk::validation::ProdukValidator;
+use super::events::{ProdukEventPublisher, ProdukObserver};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Produk {
@@ -12,6 +13,7 @@ pub struct Produk {
     pub harga: f64,
     pub stok: u32,
     pub deskripsi: Option<String>,
+    pub event_publisher: ProdukEventPublisher,
 }
 
 // Builder pattern implementation - sudah baik, sedikit perbaikan
@@ -33,6 +35,7 @@ impl ProdukBuilder {
             harga: 0.0,
             stok: 0,
             deskripsi: None,
+            event_publisher: ProdukEventPublisher::new(),
         }
     }
     
@@ -168,6 +171,16 @@ impl Produk {
             stok: new_stock,
             deskripsi: self.deskripsi.clone(),
         }
+    }
+
+    pub fn add_observer(&mut self, observer: Arc<dyn ProdukObserver>) {
+        self.event_publisher.add_observer(observer);
+    }
+
+    pub fn set_stok(&mut self, new_stock: u32) {
+        let old = self.stok;
+        self.stok = new_stock;
+        self.event_publisher.notify_stock_changed(self, old);
     }
 }
 
