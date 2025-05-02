@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use crate::main::model::payment::Payment;
+use crate::manajemen_pembayaran::model::payment::Payment;
 
 pub trait PaymentRepository: Send + Sync {
     fn save(&self, payment: Payment) -> Result<Payment, String>;
