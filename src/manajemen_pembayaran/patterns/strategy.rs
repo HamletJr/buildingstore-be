@@ -1,5 +1,5 @@
 use uuid::Uuid;
-use crate::main::model::payment::PaymentMethod;
+use crate::manajemen_pembayaran::model::payment::PaymentMethod;
 
 pub trait PaymentProcessor: Send + Sync {
     fn process(&self, amount: f64, transaction_id: &str) -> Result<String, String>;
@@ -67,5 +67,72 @@ impl PaymentProcessor for EWalletPaymentProcessor {
 
     fn get_method(&self) -> PaymentMethod {
         PaymentMethod::EWallet
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use uuid::Uuid;
+
+    #[test]
+    fn test_cash_payment_processor() {
+        let processor = CashPaymentProcessor;
+        let transaction_id = format!("TRX-{}", Uuid::new_v4());
+        
+        let result = processor.process(1000.0, &transaction_id);
+        assert!(result.is_ok());
+        let payment_id = result.unwrap();
+        assert!(payment_id.starts_with("CASH-"));
+        
+        assert_eq!(processor.get_method(), PaymentMethod::Cash);
+    }
+
+    #[test]
+    fn test_credit_card_payment_processor() {
+        let processor = CreditCardPaymentProcessor;
+        let transaction_id = format!("TRX-{}", Uuid::new_v4());
+        
+        let result = processor.process(1000.0, &transaction_id);
+        assert!(result.is_ok());
+        let payment_id = result.unwrap();
+        assert!(payment_id.starts_with("CC-"));
+        
+        assert_eq!(processor.get_method(), PaymentMethod::CreditCard);
+    }
+
+    #[test]
+    fn test_bank_transfer_payment_processor() {
+        let processor = BankTransferPaymentProcessor;
+        let transaction_id = format!("TRX-{}", Uuid::new_v4());
+        
+        let result = processor.process(1000.0, &transaction_id);
+        assert!(result.is_ok());
+        let payment_id = result.unwrap();
+        assert!(payment_id.starts_with("BANK-"));
+        
+        assert_eq!(processor.get_method(), PaymentMethod::BankTransfer);
+    }
+
+    #[test]
+    fn test_e_wallet_payment_processor() {
+        let processor = EWalletPaymentProcessor;
+        let transaction_id = format!("TRX-{}", Uuid::new_v4());
+        
+        let result = processor.process(1000.0, &transaction_id);
+        assert!(result.is_ok());
+        let payment_id = result.unwrap();
+        assert!(payment_id.starts_with("EWALLET-"));
+        
+        assert_eq!(processor.get_method(), PaymentMethod::EWallet);
+    }
+
+    #[test]
+    fn test_invalid_amount() {
+        let processor = CashPaymentProcessor;
+        let transaction_id = format!("TRX-{}", Uuid::new_v4());
+        
+        let result = processor.process(-100.0, &transaction_id);
+        assert!(result.is_err());
     }
 }
