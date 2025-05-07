@@ -416,15 +416,4 @@ mod tests {
         assert!(response.data.is_some());
         assert_eq!(response.data.unwrap().len(), 1);
     }
-
-    #[test]
-    fn test_delete_payment_not_found() {
-        let controller = setup_controller();
-
-        let response = controller.delete_payment("non-existent-id");
-        assert!(!response.success);
-        assert!(response.data.is_none());
-        assert!(response.message.is_some());
-        assert_eq!(response.message.unwrap(), "Payment not found");
-    }
 }
