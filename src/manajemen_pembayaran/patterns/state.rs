@@ -1,4 +1,3 @@
-// PATH: src/manajemen_pembayaran/patterns/state.rs
 use uuid::Uuid;
 use chrono::Utc;
 
