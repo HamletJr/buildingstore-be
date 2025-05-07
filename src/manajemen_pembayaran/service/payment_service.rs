@@ -1,6 +1,6 @@
 use std::collections::HashMap;
-use crate::main::model::payment::{Payment, PaymentMethod};
-use crate::main::enums::payment_status::PaymentStatus;
+use crate::manajemen_pembayaran::model::payment::{Payment, PaymentMethod};
+use crate::manajemen_pembayaran::enums::payment_status::PaymentStatus;
 
 pub trait PaymentService: Send + Sync {
     fn create_payment(&self, transaction_id: String, amount: f64, method: PaymentMethod) -> Result<Payment, String>;
