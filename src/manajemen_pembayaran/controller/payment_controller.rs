@@ -383,4 +383,48 @@ mod tests {
         let get_response = controller.get_payment(&payment.id);
         assert!(!get_response.success);
     }
+
+    #[test]
+    fn test_get_all_payments() {
+        let controller = setup_controller();
+
+        let request1 = CreatePaymentRequest {
+            transaction_id: format!("TRX-{}", Uuid::new_v4()),
+            amount: 1000.0,
+            method: "CASH".to_string(),
+        };
+        controller.create_payment(request1);
+
+        let request2 = CreatePaymentRequest {
+            transaction_id: format!("TRX-{}", Uuid::new_v4()),
+            amount: 2000.0,
+            method: "CREDIT_CARD".to_string(),
+        };
+        controller.create_payment(request2);
+
+        let response = controller.get_all_payments(None);
+        assert!(response.success);
+        assert!(response.data.is_some());
+        assert_eq!(response.data.unwrap().len(), 2);
+
+        let filter_request = PaymentFilterRequest {
+            status: None,
+            method: Some("CASH".to_string()),
+        };
+        let response = controller.get_all_payments(Some(filter_request));
+        assert!(response.success);
+        assert!(response.data.is_some());
+        assert_eq!(response.data.unwrap().len(), 1);
+    }
+
+    #[test]
+    fn test_delete_payment_not_found() {
+        let controller = setup_controller();
+
+        let response = controller.delete_payment("non-existent-id");
+        assert!(!response.success);
+        assert!(response.data.is_none());
+        assert!(response.message.is_some());
+        assert_eq!(response.message.unwrap(), "Payment not found");
+    }
 }
