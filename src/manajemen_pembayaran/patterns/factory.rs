@@ -1,5 +1,5 @@
-// PATH: src/manajemen_pembayaran/patterns/factory.rs
-use crate::manajemen_pembayaran::model::payment::{PaymentMethod, PaymentStatus};
+use crate::manajemen_pembayaran::model::payment::PaymentMethod;
+use crate::manajemen_pembayaran::enums::payment_status::PaymentStatus;
 use crate::manajemen_pembayaran::patterns::strategy::{PaymentProcessor, CashPaymentProcessor, CreditCardPaymentProcessor, BankTransferPaymentProcessor, EWalletPaymentProcessor};
 use crate::manajemen_pembayaran::patterns::state::{PaymentState, PaidState, InstallmentState};
 
