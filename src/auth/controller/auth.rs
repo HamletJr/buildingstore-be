@@ -6,15 +6,23 @@ use uuid::Uuid;
 
 use crate::auth::model::user::User;
 use crate::auth::service::auth::AuthService;
+use crate::auth::guards::auth::AuthenticatedUser;
 
 #[derive(FromForm)]
-pub struct AuthForm {
+pub struct LoginForm {
     pub username: String,
     pub password: String,
 }
 
+#[derive(FromForm)]
+pub struct RegisterForm {
+    pub username: String,
+    pub password: String,
+    pub is_admin: bool,
+}
+
 #[post("/login", data = "<form>")]
-pub async fn login(form: Form<AuthForm>, cookies: &CookieJar<'_>, db: &State<Pool<Any>>) -> Status {
+pub async fn login(form: Form<LoginForm>, cookies: &CookieJar<'_>, db: &State<Pool<Any>>) -> Status {
     let username = form.username.clone();
     let password = form.password.clone();
 
@@ -29,10 +37,13 @@ pub async fn login(form: Form<AuthForm>, cookies: &CookieJar<'_>, db: &State<Poo
 }
 
 #[post("/register", data = "<form>")]
-pub async fn register(form: Form<AuthForm>, db: &State<Pool<Any>>) -> Status {
+pub async fn register(user: AuthenticatedUser, form: Form<RegisterForm>, db: &State<Pool<Any>>) -> Status {
+    if !user.is_admin {
+        return Status::Forbidden;
+    }
     let username = form.username.clone();
     let password = form.password.clone();
-    let is_admin = false; // Default to false for regular users
+    let is_admin = form.is_admin;
 
     let user = User::new(username, password, is_admin);
     let result = AuthService::register_user(db.inner().clone(), user).await;
@@ -61,6 +72,9 @@ mod test {
     use rocket::{routes, uri, Rocket, async_test};
     use sqlx::any::install_default_drivers;
 
+    const ADMIN_USERNAME: &str = "admin";
+    const ADMIN_PASSWORD: &str = "adminpass";
+
     async fn setup() -> Rocket<rocket::Build> {
         install_default_drivers();
         let db = sqlx::any::AnyPoolOptions::new()
@@ -74,6 +88,9 @@ mod test {
             .await
             .unwrap();
 
+        let admin_user = User::new(ADMIN_USERNAME.to_string(), ADMIN_PASSWORD.to_string(), true);
+        AuthService::register_user(db.clone(), admin_user).await.unwrap();
+
         let rocket = rocket::build()
             .manage(reqwest::Client::builder().build().unwrap())
             .manage(db.clone())
@@ -83,12 +100,45 @@ mod test {
     }
 
     #[async_test]
+    async fn test_login_valid_credentials() {
+        let rocket = setup().await;
+        let client = Client::tracked(rocket).await.expect("Must provice a valid Rocket instance");
+        let response = client.post(uri!(super::login))
+            .header(rocket::http::ContentType::Form)
+            .body(format!("username={}&password={}", ADMIN_USERNAME, ADMIN_PASSWORD))
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::Ok);
+        let cookies = response.cookies();
+        assert!(cookies.get("session_key").is_some(), "Session cookie should be set");
+    }
+
+    #[async_test]
+    async fn test_login_invalid_credentials() {
+        let rocket = setup().await;
+        let client = Client::tracked(rocket).await.expect("Must provice a valid Rocket instance");
+        let response = client.post(uri!(super::login))
+            .header(rocket::http::ContentType::Form)
+            .body("username=invaliduser&password=invalidpass")
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::Unauthorized);
+        let cookies = response.cookies();
+        assert!(cookies.get("session_key").is_none(), "Session cookie should not be set");
+    }
+
+    #[async_test]
     async fn test_register() {
         let rocket = setup().await;
         let client = Client::tracked(rocket).await.expect("Must provice a valid Rocket instance");
+        client.post(uri!(super::login))
+            .header(rocket::http::ContentType::Form)
+            .body(format!("username={}&password={}", ADMIN_USERNAME, ADMIN_PASSWORD))
+            .dispatch()
+            .await;
         let response = client.post(uri!(super::register))
             .header(rocket::http::ContentType::Form)
-            .body("username=testuser&password=testpass")
+            .body("username=testuser&password=testpass&is_admin=false")
             .dispatch()
             .await;
         assert_eq!(response.status(), Status::Ok);
@@ -98,6 +148,11 @@ mod test {
     async fn test_register_existing_user() {
         let rocket = setup().await;
         let client = Client::tracked(rocket).await.expect("Must provice a valid Rocket instance");
+        client.post(uri!(super::login))
+            .header(rocket::http::ContentType::Form)
+            .body(format!("username={}&password={}", ADMIN_USERNAME, ADMIN_PASSWORD))
+            .dispatch()
+            .await;
         client.post(uri!(super::register))
             .header(rocket::http::ContentType::Form)
             .body("username=testuser&password=testpass")
@@ -112,55 +167,24 @@ mod test {
     }
 
     #[async_test]
-    async fn test_login_valid_credentials() {
+    async fn test_register_not_admin() {
         let rocket = setup().await;
         let client = Client::tracked(rocket).await.expect("Must provice a valid Rocket instance");
-        client.post(uri!(super::register))
+        let response = client.post(uri!(super::register))
             .header(rocket::http::ContentType::Form)
-            .body("username=testuser&password=testpass")
-            .dispatch()
-            .await;
-        let response = client.post(uri!(super::login))
-            .header(rocket::http::ContentType::Form)
-            .body("username=testuser&password=testpass")
-            .dispatch()
-            .await;
-        assert_eq!(response.status(), Status::Ok);
-        let cookies = response.cookies();
-        assert!(cookies.get("session_key").is_some(), "Session cookie should be set");
-    }
-
-    #[async_test]
-    async fn test_login_invalid_credentials() {
-        let rocket = setup().await;
-        let client = Client::tracked(rocket).await.expect("Must provice a valid Rocket instance");
-        client.post(uri!(super::register))
-            .header(rocket::http::ContentType::Form)
-            .body("username=testuser&password=testpass")
-            .dispatch()
-            .await;
-        let response = client.post(uri!(super::login))
-            .header(rocket::http::ContentType::Form)
-            .body("username=invaliduser&password=invalidpass")
+            .body("username=testuser&password=testpass&is_admin=false")
             .dispatch()
             .await;
         assert_eq!(response.status(), Status::Unauthorized);
-        let cookies = response.cookies();
-        assert!(cookies.get("session_key").is_none(), "Session cookie should not be set");
     }
 
     #[async_test]
     async fn test_logout() {
         let rocket = setup().await;
         let client = Client::tracked(rocket).await.expect("Must provice a valid Rocket instance");
-        client.post(uri!(super::register))
-            .header(rocket::http::ContentType::Form)
-            .body("username=testuser&password=testpass")
-            .dispatch()
-            .await;
         client.post(uri!(super::login))
             .header(rocket::http::ContentType::Form)
-            .body("username=testuser&password=testpass")
+            .body(format!("username={}&password={}", ADMIN_USERNAME, ADMIN_PASSWORD))
             .dispatch()
             .await;
         let response = client.get(uri!(super::logout))
