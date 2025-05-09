@@ -1,11 +1,10 @@
-use std::sync::{Arc, Mutex, Once};
+use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
 use lazy_static::lazy_static;
-use validation::{ProdukValidator};
-use crate::manajemen_produk::produk::validation::ProdukValidator;
+use super::validation::ProdukValidator;
 use super::events::{ProdukEventPublisher, ProdukObserver};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)] 
 pub struct Produk {
     pub id: Option<i64>,  // Menambahkan ID untuk memudahkan operasi database
     pub nama: String,
@@ -24,6 +23,7 @@ pub struct ProdukBuilder {
     harga: f64,
     stok: u32,
     deskripsi: Option<String>,
+    event_publisher: ProdukEventPublisher,
 }
 
 impl ProdukBuilder {
@@ -59,18 +59,21 @@ impl ProdukBuilder {
         self
     }
     
-    pub fn build(self) -> Result<Produk, &'static str> {
+    pub fn build(self) -> Result<Produk, Vec<String>> {
         // Validate before building
-        validate_produk(&self.nama, &self.kategori, self.harga, self.stok, &self.deskripsi)?;
-        
-        Ok(Produk {
+        let validator = ProdukValidator::default();
+        let produk = Produk {
             id: self.id,
             nama: self.nama,
             kategori: self.kategori,
             harga: self.harga,
             stok: self.stok,
             deskripsi: self.deskripsi,
-        })
+            event_publisher: self.event_publisher,
+        };
+        
+        validator.validate(&produk)?;
+        Ok(produk)
     }
 }
 
@@ -91,6 +94,7 @@ impl Produk {
             harga,
             stok,
             deskripsi,
+            event_publisher: ProdukEventPublisher::new(),
         }
     }
     
@@ -110,11 +114,13 @@ impl Produk {
             harga,
             stok,
             deskripsi,
+            event_publisher: ProdukEventPublisher::new(),
         }
     }
     
-    pub fn validate(&self) -> Result<(), &'static str> {
-        validate_produk(&self.nama, &self.kategori, self.harga, self.stok, &self.deskripsi)
+    pub fn validate(&self) -> Result<(), Vec<String>> {
+        let validator = ProdukValidator::default();
+        validator.validate(self)
     }
     
     pub fn create_with_validation(
@@ -123,7 +129,7 @@ impl Produk {
         harga: f64,
         stok: u32,
         deskripsi: Option<String>,
-    ) -> Result<Self, &'static str> {
+    ) -> Result<Self, Vec<String>> {
         let produk = Self::new(nama, kategori, harga, stok, deskripsi);
         produk.validate()?;
         Ok(produk)
@@ -147,9 +153,9 @@ impl Produk {
     }
     
     // Prototype Pattern - Clone dengan parameter khusus
-    pub fn clone_with_new_price(&self, new_price: f64) -> Result<Self, &'static str> {
+    pub fn clone_with_new_price(&self, new_price: f64) -> Result<Self, String> {
         if new_price < 0.0 {
-            return Err("Harga produk tidak boleh negatif");
+            return Err("Harga produk tidak boleh negatif".to_string());
         }
         
         Ok(Self {
@@ -159,6 +165,7 @@ impl Produk {
             harga: new_price,
             stok: self.stok,
             deskripsi: self.deskripsi.clone(),
+            event_publisher: self.event_publisher.clone(),
         })
     }
     
@@ -170,6 +177,7 @@ impl Produk {
             harga: self.harga,
             stok: new_stock,
             deskripsi: self.deskripsi.clone(),
+            event_publisher: self.event_publisher.clone(),
         }
     }
 
@@ -181,6 +189,18 @@ impl Produk {
         let old = self.stok;
         self.stok = new_stock;
         self.event_publisher.notify_stock_changed(self, old);
+    }
+    
+    pub fn set_harga(&mut self, new_price: f64) -> Result<(), String> {
+        if new_price < 0.0 {
+            return Err("Harga produk tidak boleh negatif".to_string());
+        }
+        
+        let _old = self.harga;
+        self.harga = new_price;
+        // Note: Your event publisher doesn't have a price_changed notification
+        // self.event_publisher.notify_price_changed(self, old);
+        Ok(())
     }
 }
 
@@ -326,6 +346,7 @@ impl ProdukTemplatePool {
                 harga,
                 stok,
                 deskripsi: template.deskripsi.clone(),
+                event_publisher: ProdukEventPublisher::new(),
             }
         })
     }
@@ -347,7 +368,8 @@ pub fn validate_produk(
     harga: f64,
     stok: u32,
     deskripsi: &Option<String>,
-) -> Result<(), &'static str> {
+) -> Result<(), Vec<String>> {
+    let validator = ProdukValidator::default();
     let produk = Produk::new(
         nama.to_string(),
         kategori.to_string(),
@@ -355,8 +377,6 @@ pub fn validate_produk(
         stok,
         deskripsi.clone(),
     );
-    match ProdukValidator::default().validate(&produk) {
-        Ok(_) => Ok(()),
-        Err(errors) => Err(errors.first().map(|s| s.as_str()).unwrap_or("Validasi gagal")),
-    }
+    
+    validator.validate(&produk)
 }
