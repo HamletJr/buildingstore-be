@@ -15,3 +15,12 @@ sqlx = { version = "0.7", features = ["migrate", "macros", "any"] }
 chrono = { version = "0.4", features = ["serde", "clock"] }
 uuid = { version = "1", features = ["v4"] }
 bcrypt = "0.17.0"
+
+tonic = "0.7"
+prost = "0.10"
+prost-types = "0.12"
+tokio = { version = "1", features = ["full"] }
+tokio-stream = "0.1"
+
+[build-dependencies]
+tonic-build = "0.7"
