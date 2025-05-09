@@ -3,7 +3,7 @@ use std::sync::Arc;
 use tonic::transport::Server;
 use log::{info, error};
 
-use crate::service::transaksi_service::TransaksiService;
+use crate::main::service::transaksi_service::TransaksiService;
 use crate::grpc::transaksi_service_impl::TransaksiServiceImpl;
 use crate::grpc::proto::TransaksiServiceServer;
 

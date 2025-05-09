@@ -1,5 +1,6 @@
 pub mod server;
 pub mod client;
+pub mod transaksi_service_impl;
 
 pub use server::TransaksiServer;
 pub use client::TransaksiClient;
