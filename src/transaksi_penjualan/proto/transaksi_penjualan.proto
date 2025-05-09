@@ -27,6 +27,18 @@ service TransaksiService {
   rpc WatchTransaksi(TransaksiId) returns (stream TransaksiEvent) {}
 }
 
+message TransaksiEvent {
+  enum EventType {
+    CREATED = 0;
+    UPDATED = 1;
+    STATUS_CHANGED = 2;
+    DELETED = 3;
+  }
+  
+  EventType event_type = 1;
+  TransaksiResponse transaksi = 2;
+}
+
 // Request untuk membuat transaksi baru
 message TransaksiRequest {
   string customer_id = 1;

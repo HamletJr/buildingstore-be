@@ -1,12 +1,17 @@
 use std::sync::Arc;
+use std::pin::Pin;
 use tonic::{Request, Response, Status};
 use uuid::Uuid;
 use chrono::{DateTime, Utc};
 use log::{info, error, debug};
+use tokio::sync::mpsc;
+use tokio_stream::Stream;
+use futures::StreamExt;
 
-use crate::service::transaksi_service::TransaksiService;
-use crate::model::transaksi::{Transaksi, TransaksiItem};
-use crate::enums::status_transaksi::StatusTransaksi;
+use crate::main::service::transaksi_service::TransaksiService;
+use crate::main::model::transaksi::{Transaksi, TransaksiItem};
+use crate::main::enums::status_transaksi::StatusTransaksi;
+use crate::main::observer::Observer;
 use crate::grpc::proto::{
     self,
     TransaksiRequest,
@@ -16,6 +21,8 @@ use crate::grpc::proto::{
     TransaksiList,
     UpdateStatusRequest,
     ItemTransaksi,
+    TransaksiEvent,
+    transaksi_event,
 };
 
 pub struct TransaksiServiceImpl {
@@ -242,5 +249,77 @@ impl proto::TransaksiService for TransaksiServiceImpl {
                 Err(Status::internal(format!("Failed to cancel transaksi: {}", e)))
             }
         }
+    }
+
+    type WatchTransaksiStream = Pin<Box<dyn Stream<Item = Result<TransaksiEvent, Status>> + Send + 'static>>;
+
+    async fn watch_transaksi(
+        &self,
+        request: Request<TransaksiId>,
+    ) -> Result<Response<Self::WatchTransaksiStream>, Status> {
+        let id = request.into_inner().id;
+        debug!("Received WatchTransaksi request for id: {}", id);
+        
+        let uuid = match Uuid::parse_str(&id) {
+            Ok(uuid) => uuid,
+            Err(_) => return Err(Status::invalid_argument("Invalid UUID format")),
+        };
+        
+        let (tx, rx) = mpsc::channel(128);
+        
+        let observer = TransaksiObserver::new(tx);
+        
+        if let Err(e) = self.service.register_observer(uuid, Box::new(observer)).await {
+            error!("Failed to register observer: {}", e);
+            return Err(Status::internal("Failed to watch transaksi"));
+        }
+        
+        let output_stream = tokio_stream::wrappers::ReceiverStream::new(rx)
+            .map(Ok::<_, Status>);
+        
+        Ok(Response::new(Box::pin(output_stream) as Self::WatchTransaksiStream))
+    }
+}
+
+struct TransaksiObserver {
+    sender: mpsc::Sender<TransaksiEvent>,
+}
+
+impl TransaksiObserver {
+    fn new(sender: mpsc::Sender<TransaksiEvent>) -> Self {
+        Self { sender }
+    }
+    
+    async fn send_event(&self, event_type: transaksi_event::EventType, transaksi: Transaksi) {
+        let service_impl = TransaksiServiceImpl::new(Arc::new(TransaksiService::default()));
+        let response = service_impl.transaksi_to_response(&transaksi);
+        
+        let event = TransaksiEvent {
+            event_type: event_type as i32,
+            transaksi: Some(response),
+        };
+        
+        if let Err(e) = self.sender.send(event).await {
+            error!("Failed to send event through channel: {}", e);
+        }
+    }
+}
+
+#[tonic::async_trait]
+impl Observer<Transaksi> for TransaksiObserver {
+    async fn on_created(&self, transaksi: Transaksi) {
+        self.send_event(transaksi_event::EventType::Created, transaksi).await;
+    }
+    
+    async fn on_updated(&self, transaksi: Transaksi) {
+        self.send_event(transaksi_event::EventType::Updated, transaksi).await;
+    }
+    
+    async fn on_status_changed(&self, transaksi: Transaksi) {
+        self.send_event(transaksi_event::EventType::StatusChanged, transaksi).await;
+    }
+    
+    async fn on_deleted(&self, transaksi: Transaksi) {
+        self.send_event(transaksi_event::EventType::Deleted, transaksi).await;
     }
 }

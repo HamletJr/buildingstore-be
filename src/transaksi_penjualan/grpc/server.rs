@@ -30,4 +30,21 @@ impl TransaksiServer {
 
         Ok(())
     }
+
+    pub async fn start_with_shutdown_signal(
+        &self, 
+        shutdown_signal: impl std::future::Future<Output = ()> + Send + 'static
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let service = TransaksiServiceImpl::new(Arc::clone(&self.service));
+        let server = TransaksiServiceServer::new(service);
+    
+        info!("TransaksiServer listening on {}", self.addr);
+    
+        Server::builder()
+            .add_service(server)
+            .serve_with_shutdown(self.addr, shutdown_signal)
+            .await?;
+    
+        Ok(())
+    }
 }
