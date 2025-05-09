@@ -1,9 +1,10 @@
 use rocket::serde::{Deserialize, Serialize, json::Json};
 use rocket_db_pools::Connection;
+use rocket::{get, post, put, delete, routes};
 use crate::BuildingStoreDB;
-use super::model::{Produk, ProdukBuilder, get_produk_factory_registry, get_produk_template_pool};
-use super::repository::ProdukRepository;
-use super::events::AuditLogObserver;
+use crate::manajemen_produk::produk::model::{Produk, ProdukBuilder, get_produk_factory_registry, get_produk_template_pool};
+use crate::manajemen_produk::produk::repository::ProdukRepository;
+use crate::manajemen_produk::produk::audit_log_observer::AuditLogObserver;
 use std::sync::Arc;
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -12,7 +13,7 @@ pub struct ProdukRequest {
     pub nama: String,
     pub kategori: String,
     pub harga: f64,
-    pub stok: u32,
+    pub stok: i32,  // Changed from u32 to i32
     pub deskripsi: Option<String>,
 }
 
@@ -23,7 +24,7 @@ pub struct ProdukResponse {
     pub nama: String,
     pub kategori: String,
     pub harga: f64,
-    pub stok: u32,
+    pub stok: u32,  // Changed from u32 to i32
     pub deskripsi: Option<String>,
 }
 
@@ -51,7 +52,7 @@ pub struct ApiResponse<T> {
 // Controller functions
 #[get("/produk")]
 pub async fn list_produk(mut db: Connection<BuildingStoreDB>) -> Json<ApiResponse<Vec<ProdukResponse>>> {
-    match ProdukRepository::ambil_semua_produk(&mut **db).await {
+    match ProdukRepository::ambil_semua_produk(&mut *db).await {
         Ok(produk_list) => {
             let response_list = produk_list.into_iter()
                 .map(|p| ProdukResponse::from(p))
@@ -73,7 +74,7 @@ pub async fn list_produk(mut db: Connection<BuildingStoreDB>) -> Json<ApiRespons
 
 #[get("/produk/<id>")]
 pub async fn detail_produk(mut db: Connection<BuildingStoreDB>, id: i64) -> Json<ApiResponse<ProdukResponse>> {
-    match ProdukRepository::ambil_produk_by_id(&mut **db, id).await {
+    match ProdukRepository::ambil_produk_by_id(&mut *db, id).await {
         Ok(Some(produk)) => Json(ApiResponse {
             success: true,
             message: Some("Berhasil mengambil detail produk".to_string()),
@@ -100,13 +101,13 @@ pub async fn tambah_produk(
     // Builder Pattern untuk membuat produk baru
     let produk_result = ProdukBuilder::new(request.nama.clone(), request.kategori.clone())
         .harga(request.harga)
-        .stok(request.stok)
+        .stok(request.stok.try_into().unwrap())
         .deskripsi(request.deskripsi.clone().unwrap_or_default())
         .build();
     
     match produk_result {
         Ok(produk) => {
-            match ProdukRepository::tambah_produk(&mut **db, &produk).await {
+            match ProdukRepository::tambah_produk(&mut *db, &produk).await {
                 Ok(id) => {
                     let produk_with_id = Produk::with_id(
                         id, 
@@ -132,7 +133,7 @@ pub async fn tambah_produk(
         },
         Err(e) => Json(ApiResponse {
             success: false,
-            message: Some(format!("Validasi gagal: {}", e)),
+            message: Some(format!("Validasi gagal: {:?}", e)),
             data: None,
         }),
     }
@@ -143,53 +144,60 @@ pub async fn tambah_produk_with_factory(
     mut db: Connection<BuildingStoreDB>, 
     request: Json<ProdukRequest>
 ) -> Json<ApiResponse<ProdukResponse>> {
-    // Abstract Factory Pattern
+    // Abstract Factory Pattern - Fixed async lock issue
     let registry = get_produk_factory_registry();
     
-    match registry.lock() {
-        Ok(registry) => {
-            match registry.create_produk(
-                &request.kategori, 
-                request.nama.clone(), 
-                request.harga, 
-                request.stok, 
-                request.deskripsi.clone()
-            ) {
-                Some(produk) => {
-                    match ProdukRepository::tambah_produk(&mut **db, &produk).await {
-                        Ok(id) => {
-                            let produk_with_id = Produk::with_id(
-                                id, 
-                                produk.nama, 
-                                produk.kategori, 
-                                produk.harga, 
-                                produk.stok, 
-                                produk.deskripsi
-                            );
-                            
-                            Json(ApiResponse {
-                                success: true,
-                                message: Some("Berhasil menambahkan produk baru dengan factory".to_string()),
-                                data: Some(ProdukResponse::from(produk_with_id)),
-                            })
-                        },
-                        Err(e) => Json(ApiResponse {
-                            success: false,
-                            message: Some(format!("Gagal menyimpan produk: {}", e)),
-                            data: None,
-                        }),
-                    }
-                },
-                None => Json(ApiResponse {
+    // Create the product before awaiting
+    let produk = {
+        match registry.lock() {
+            Ok(registry) => {
+                registry.create_produk(
+                    &request.kategori, 
+                    request.nama.clone(), 
+                    request.harga, 
+                    request.stok.try_into().unwrap(), 
+                    request.deskripsi.clone()
+                )
+            },
+            Err(_) => {
+                return Json(ApiResponse {
                     success: false,
-                    message: Some(format!("Factory untuk kategori '{}' tidak ditemukan", request.kategori)),
+                    message: Some("Gagal mengakses registry factory".to_string()),
+                    data: None,
+                });
+            }
+        }
+    };
+    
+    match produk {
+        Some(produk) => {
+            match ProdukRepository::tambah_produk(&mut *db, &produk).await {
+                Ok(id) => {
+                    let produk_with_id = Produk::with_id(
+                        id, 
+                        produk.nama, 
+                        produk.kategori, 
+                        produk.harga, 
+                        produk.stok, 
+                        produk.deskripsi
+                    );
+                    
+                    Json(ApiResponse {
+                        success: true,
+                        message: Some("Berhasil menambahkan produk baru dengan factory".to_string()),
+                        data: Some(ProdukResponse::from(produk_with_id)),
+                    })
+                },
+                Err(e) => Json(ApiResponse {
+                    success: false,
+                    message: Some(format!("Gagal menyimpan produk: {}", e)),
                     data: None,
                 }),
             }
         },
-        Err(_) => Json(ApiResponse {
+        None => Json(ApiResponse {
             success: false,
-            message: Some("Gagal mengakses registry factory".to_string()),
+            message: Some(format!("Factory untuk kategori '{}' tidak ditemukan", request.kategori)),
             data: None,
         }),
     }
@@ -201,57 +209,64 @@ pub async fn tambah_produk_from_template(
     template_key: String,
     request: Json<ProdukRequest>
 ) -> Json<ApiResponse<ProdukResponse>> {
-    // Object Pool Pattern
+    // Object Pool Pattern - Fixed async lock issue
     let template_pool = get_produk_template_pool();
     
-    match template_pool.lock() {
-        Ok(pool) => {
-            match pool.create_from_template(&template_key, request.harga, request.stok) {
-                Some(mut produk) => {
-                    // Update nama jika disediakan
-                    if !request.nama.trim().is_empty() {
-                        produk.nama = request.nama.clone();
-                    }
-                    
-                    // Update deskripsi jika disediakan
-                    if request.deskripsi.is_some() {
-                        produk.deskripsi = request.deskripsi.clone();
-                    }
-                    
-                    match ProdukRepository::tambah_produk(&mut **db, &produk).await {
-                        Ok(id) => {
-                            let produk_with_id = Produk::with_id(
-                                id, 
-                                produk.nama, 
-                                produk.kategori, 
-                                produk.harga, 
-                                produk.stok, 
-                                produk.deskripsi
-                            );
-                            
-                            Json(ApiResponse {
-                                success: true,
-                                message: Some("Berhasil menambahkan produk dari template".to_string()),
-                                data: Some(ProdukResponse::from(produk_with_id)),
-                            })
-                        },
-                        Err(e) => Json(ApiResponse {
-                            success: false,
-                            message: Some(format!("Gagal menyimpan produk: {}", e)),
-                            data: None,
-                        }),
-                    }
-                },
-                None => Json(ApiResponse {
+    // Get template before awaiting
+    let mut produk = {
+        match template_pool.lock() {
+            Ok(pool) => {
+                pool.create_from_template(&template_key, request.harga, request.stok.try_into().unwrap())
+            },
+            Err(_) => {
+                return Json(ApiResponse {
                     success: false,
-                    message: Some(format!("Template dengan key '{}' tidak ditemukan", template_key)),
+                    message: Some("Gagal mengakses template pool".to_string()),
+                    data: None,
+                });
+            }
+        }
+    };
+    
+    match produk {
+        Some(ref mut produk) => {
+            // Update nama jika disediakan
+            if !request.nama.trim().is_empty() {
+                produk.nama = request.nama.clone();
+            }
+            
+            // Update deskripsi jika disediakan
+            if request.deskripsi.is_some() {
+                produk.deskripsi = request.deskripsi.clone();
+            }
+            
+            match ProdukRepository::tambah_produk(&mut *db, &produk).await {
+                Ok(id) => {
+                    let produk_with_id = Produk::with_id(
+                        id, 
+                        produk.nama.clone(), 
+                        produk.kategori.clone(), 
+                        produk.harga, 
+                        produk.stok, 
+                        produk.deskripsi.clone()
+                    );
+                    
+                    Json(ApiResponse {
+                        success: true,
+                        message: Some("Berhasil menambahkan produk dari template".to_string()),
+                        data: Some(ProdukResponse::from(produk_with_id)),
+                    })
+                },
+                Err(e) => Json(ApiResponse {
+                    success: false,
+                    message: Some(format!("Gagal menyimpan produk: {}", e)),
                     data: None,
                 }),
             }
         },
-        Err(_) => Json(ApiResponse {
+        None => Json(ApiResponse {
             success: false,
-            message: Some("Gagal mengakses template pool".to_string()),
+            message: Some(format!("Template dengan key '{}' tidak ditemukan", template_key)),
             data: None,
         }),
     }
@@ -264,13 +279,13 @@ pub async fn update_produk(
     request: Json<ProdukRequest>
 ) -> Json<ApiResponse<ProdukResponse>> {
     // Prototype Pattern - Clone dengan modifikasi
-    let produk_result = match ProdukRepository::ambil_produk_by_id(&mut **db, id).await {
-        Ok(Some(produk)) => {
+    let produk_result = match ProdukRepository::ambil_produk_by_id(&mut *db, id).await {
+        Ok(Some(_)) => {
             // Menggunakan builder untuk memperbarui produk
             let updated_produk = ProdukBuilder::new(request.nama.clone(), request.kategori.clone())
                 .id(id)
                 .harga(request.harga)
-                .stok(request.stok)
+                .stok(request.stok.try_into().unwrap())
                 .deskripsi(request.deskripsi.clone().unwrap_or_default())
                 .build();
                 
@@ -294,7 +309,7 @@ pub async fn update_produk(
     
     match produk_result {
         Ok(updated_produk) => {
-            match ProdukRepository::update_produk(&mut **db, id, &updated_produk).await {
+            match ProdukRepository::update_produk(&mut *db, id, &updated_produk).await {
                 Ok(true) => {
                     Json(ApiResponse {
                         success: true,
@@ -321,7 +336,7 @@ pub async fn update_produk(
         Err(e) => {
             Json(ApiResponse {
                 success: false,
-                message: Some(format!("Validasi gagal: {}", e)),
+                message: Some(format!("Validasi gagal: {:?}", e)),
                 data: None,
             })
         }
@@ -333,7 +348,7 @@ pub async fn hapus_produk(
     mut db: Connection<BuildingStoreDB>, 
     id: i64
 ) -> Json<ApiResponse<()>> {
-    match ProdukRepository::hapus_produk(&mut **db, id).await {
+    match ProdukRepository::hapus_produk(&mut *db, id).await {
         Ok(true) => {
             Json(ApiResponse {
                 success: true,
@@ -364,7 +379,7 @@ pub async fn filter_produk_by_kategori(
     mut db: Connection<BuildingStoreDB>,
     kategori: String
 ) -> Json<ApiResponse<Vec<ProdukResponse>>> {
-    match ProdukRepository::filter_produk_by_kategori(&mut **db, &kategori).await {
+    match ProdukRepository::filter_produk_by_kategori(&mut *db, &kategori).await {
         Ok(produk_list) => {
             let response_list = produk_list.into_iter()
                 .map(|p| ProdukResponse::from(p))
@@ -390,7 +405,7 @@ pub async fn filter_produk_by_price(
     min: f64,
     max: f64
 ) -> Json<ApiResponse<Vec<ProdukResponse>>> {
-    match ProdukRepository::filter_produk_by_price_range(&mut **db, min, max).await {
+    match ProdukRepository::filter_produk_by_price_range(&mut *db, min, max).await {
         Ok(produk_list) => {
             let response_list = produk_list.into_iter()
                 .map(|p| ProdukResponse::from(p))
@@ -413,9 +428,9 @@ pub async fn filter_produk_by_price(
 #[get("/produk/stok?<min_stok>")]
 pub async fn filter_produk_by_stock(
     mut db: Connection<BuildingStoreDB>,
-    min_stok: u32
+    min_stok: i32  // Changed from u32 to i32
 ) -> Json<ApiResponse<Vec<ProdukResponse>>> {
-    match ProdukRepository::filter_produk_by_stock_availability(&mut **db, min_stok).await {
+    match ProdukRepository::filter_produk_by_stock_availability(&mut *db, min_stok.try_into().unwrap()).await {
         Ok(produk_list) => {
             let response_list = produk_list.into_iter()
                 .map(|p| ProdukResponse::from(p))
@@ -442,7 +457,7 @@ pub async fn clone_produk_with_price(
     id: i64,
     request: Json<ProdukRequest>
 ) -> Json<ApiResponse<ProdukResponse>> {
-    match ProdukRepository::ambil_produk_by_id(&mut **db, id).await {
+    match ProdukRepository::ambil_produk_by_id(&mut *db, id).await {
         Ok(Some(existing_produk)) => {
             match existing_produk.clone_with_new_price(request.harga) {
                 Ok(cloned_produk) => {
@@ -457,7 +472,7 @@ pub async fn clone_produk_with_price(
                         cloned_produk
                     };
                     
-                    match ProdukRepository::tambah_produk(&mut **db, &final_produk).await {
+                    match ProdukRepository::tambah_produk(&mut *db, &final_produk).await {
                         Ok(new_id) => {
                             let produk_with_id = Produk::with_id(
                                 new_id,
@@ -483,7 +498,7 @@ pub async fn clone_produk_with_price(
                 },
                 Err(e) => Json(ApiResponse {
                     success: false,
-                    message: Some(format!("Validasi gagal: {}", e)),
+                    message: Some(format!("Validasi gagal: {:?}", e)),
                     data: None,
                 }),
             }
@@ -503,22 +518,24 @@ pub async fn clone_produk_with_price(
 
 #[post("/produk/<id>/update_stock", format = "json", data = "<new_stok>")]
 pub async fn update_stock(
-    id: i64,
-    new_stok: Json<u32>,
     mut db: Connection<BuildingStoreDB>,
+    id: i64,
+    new_stok: Json<i32>,
 ) -> Json<ApiResponse<()>> {
-    match ProdukRepository::ambil_produk_by_id(&mut **db, id).await {
+    // Fixed async issue with observers
+    match ProdukRepository::ambil_produk_by_id(&mut *db, id).await {
         Ok(Some(mut produk)) => {
-            // Tambahkan observer audit log
-            produk.add_observer(Arc::new(AuditLogObserver {
-                db: db.clone().into_inner(), // pastikan `AuditLogObserver` menerima `PgPool`, bukan Connection
-            }));
-
+            // Create the observer
+            let observer = Arc::new(AuditLogObserver::new());
+            
+            // Add observer to produk
+            produk.add_observer(observer);
+            
             // Update stok dan trigger observer
-            produk.set_stok(*new_stok);
-
+            produk.set_stok((*new_stok).try_into().unwrap());
+            
             // Simpan ke database
-            match ProdukRepository::update_produk(&mut **db, id, &produk).await {
+            match ProdukRepository::update_produk(&mut *db, id, &produk).await {
                 Ok(_) => Json(ApiResponse {
                     success: true,
                     message: Some("Stok produk berhasil diperbarui".into()),
