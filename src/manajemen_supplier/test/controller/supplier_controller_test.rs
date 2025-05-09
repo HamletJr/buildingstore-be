@@ -1,111 +1,279 @@
-#[cfg(test)]
-mod supplier_controller_test {
-    use std::sync::Arc;
-    use crate::manajemen_supplier::main::controller::supplier_controller::SupplierController;
-    use crate::manajemen_supplier::main::repository::supplier_repository_impl::SupplierRepositoryImpl;
-    use crate::manajemen_supplier::main::service::supplier_notifier::SupplierNotifier;
-    use crate::manajemen_supplier::main::model::supplier::Supplier;
-    use crate::manajemen_supplier::main::service::supplier_service_impl::SupplierServiceImpl;
-    use chrono::Utc;
+#![cfg(test)]
 
-    struct MockNotifier;
+use rocket::{local::asynchronous::Client, http::{Status, ContentType}};
+use std::sync::Arc;
+use chrono::Utc;
 
-    impl SupplierNotifier for MockNotifier {
-        fn notify_supplier_saved(&self, _supplier: &Supplier) {
-            // No-op for testing
+use mockall::{automock, predicate::*};
+
+use crate::manajemen_supplier::main::{
+    model::supplier::Supplier,
+    service::supplier_service::SupplierService,
+    controller::supplier_controller::{supplier_routes, SupplierRequest},
+};
+
+#[automock]
+pub trait SupplierServiceMock: Send + Sync {
+    fn save_supplier(&self, supplier: Supplier) -> Result<Supplier, String>;
+    fn get_supplier(&self, id: &str) -> Option<Supplier>;
+    fn update_supplier(&self, supplier: Supplier) -> Result<(), String>;
+    fn delete_supplier(&self, id: &str) -> Result<(), String>;
+}
+
+impl SupplierService for MockSupplierServiceMock {
+    fn save_supplier(&self, supplier: Supplier) -> Result<Supplier, String> {
+        SupplierServiceMock::save_supplier(self, supplier)
+    }
+
+    fn get_supplier(&self, id: &str) -> Option<Supplier> {
+        SupplierServiceMock::get_supplier(self, id)
+    }
+
+    fn update_supplier(&self, supplier: Supplier) -> Result<(), String> {
+        SupplierServiceMock::update_supplier(self, supplier)
+    }
+
+    fn delete_supplier(&self, id: &str) -> Result<(), String> {
+        SupplierServiceMock::delete_supplier(self, id)
+    }
+}
+
+impl SupplierRequest {
+    pub fn new(name: &str, jenis_barang: &str, jumlah_barang: i32, resi: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            jenis_barang: jenis_barang.to_string(),
+            jumlah_barang,
+            resi: resi.to_string(),
         }
     }
+}
 
-    fn setup_controller() -> SupplierController {
-        let repo = Arc::new(SupplierRepositoryImpl::new());
-        let notifier = Arc::new(MockNotifier);
-        let service = Arc::new(SupplierServiceImpl::new(repo.clone(), notifier));
-        SupplierController::new(service)
+// --- Helpers ---
+
+fn create_supplier() -> Supplier {
+    Supplier {
+        id: "test-id".to_string(),
+        name: "Test Name".to_string(),
+        jenis_barang: "Type".to_string(),
+        jumlah_barang: 20,
+        resi: "ResiTest".to_string(),
+        updated_at: Utc::now(),
     }
+}
 
-    fn sample_supplier(id: &str) -> Supplier {
-        Supplier {
-            id: id.to_string(),
-            name: "PT. Pt".to_string(),
-            jenis_barang: "Ayam".to_string(),
-            jumlah_barang: 10,
-            resi: "RESI123".to_string(),
-            updated_at: Utc::now(),
-        }
-    }
+fn create_supplier_request(s: &Supplier) -> SupplierRequest {
+    SupplierRequest::new(&s.name, &s.jenis_barang, s.jumlah_barang, &s.resi)
+}
 
-    #[test]
-    fn test_save_supplier_success() {
-        let controller = setup_controller();
-        let supplier = sample_supplier("SUP1");
+async fn build_test_client_with_mock(
+    setup_mock: impl FnOnce(&mut MockSupplierServiceMock)
+) -> Client {
+    let mut mock = MockSupplierServiceMock::new();
+    setup_mock(&mut mock);
+    let service: Arc<dyn SupplierService> = Arc::new(mock);
+    let rocket = rocket::build().manage(service).mount("/", supplier_routes());
+    Client::tracked(rocket).await.unwrap()
+}
 
-        let result = controller.save_supplier(supplier.clone());
+async fn post_json<'a>(client: &'a Client, url: &'a str, req: &'a SupplierRequest) -> rocket::local::asynchronous::LocalResponse<'a> {
+    client.post(url)
+        .header(ContentType::JSON)
+        .body(serde_json::to_string(req).unwrap())
+        .dispatch().await
+}
 
-        assert!(result.is_ok());
-        assert_eq!(result.unwrap().id, "SUP1");
-    }
+async fn put_json<'a>(client: &'a Client, url: &'a str, req: &'a SupplierRequest) -> rocket::local::asynchronous::LocalResponse<'a> {
+    client.put(url)
+        .header(ContentType::JSON)
+        .body(serde_json::to_string(req).unwrap())
+        .dispatch().await
+}
 
-    #[test]
-    fn test_get_supplier_existing() {
-        let controller = setup_controller();
-        let supplier = sample_supplier("SUP2");
-        controller.save_supplier(supplier.clone()).unwrap();
+fn assert_failure_response(res: &str, message_substr: &str) {
+    assert!(res.contains(message_substr));
+    assert!(res.contains("\"success\":false"));
+}
 
-        let fetched = controller.get_supplier("SUP2");
+// --- Tests ---
 
-        assert!(fetched.is_some());
-        assert_eq!(fetched.unwrap().name, "PT. Pt");
-    }
+#[rocket::async_test]
+async fn test_get_supplier_found() {
+    let supplier = create_supplier();
 
-    #[test]
-    fn test_get_supplier_non_existing() {
-        let controller = setup_controller();
-        let fetched = controller.get_supplier("NON_EXISTENT");
-        assert!(fetched.is_none());
-    }
+    let client = build_test_client_with_mock(|mock| {
+        mock.expect_get_supplier()
+            .with(eq("test-id"))
+            .return_const(Some(supplier.clone()));
+    }).await;
 
-    #[test]
-    fn test_update_supplier_success() {
-        let controller = setup_controller();
-        let mut supplier = sample_supplier("SUP3");
-        controller.save_supplier(supplier.clone()).unwrap();
+    let resp = client.get("/suppliers/test-id").dispatch().await;
+    assert_eq!(resp.status(), Status::Ok);
 
-        supplier.name = "Updated Supplier".to_string();
-        let result = controller.update_supplier(supplier.clone());
+    let body = resp.into_string().await.unwrap();
+    assert!(body.contains("Supplier found"));
+    assert!(body.contains(&supplier.name));
+}
 
-        assert!(result.is_ok());
+#[rocket::async_test]
+async fn test_get_supplier_not_found() {
+    let client = build_test_client_with_mock(|mock| {
+        mock.expect_get_supplier()
+            .with(eq("unknown-id"))
+            .return_const(None);
+    }).await;
 
-        let updated = controller.get_supplier("SUP3").unwrap();
-        assert_eq!(updated.name, "Updated Supplier");
-    }
+    let resp = client.get("/suppliers/unknown-id").dispatch().await;
+    assert_eq!(resp.status(), Status::NotFound);
+    let body = resp.into_string().await.unwrap();
+    assert!(body.contains("not found"));
+}
 
-    #[test]
-    fn test_update_supplier_fail_not_found() {
-        let controller = setup_controller();
-        let supplier = sample_supplier("SUP-UNKNOWN");
+#[rocket::async_test]
+async fn test_save_supplier_success() {
+    let client = build_test_client_with_mock(|mock| {
+        mock.expect_save_supplier()
+            .returning(|sup| Ok(sup));
+    }).await;
 
-        let result = controller.update_supplier(supplier);
+    let req = SupplierRequest::new("New", "Type", 10, "123");
+    let resp = post_json(&client, "/suppliers", &req).await;
 
-        assert!(result.is_err());
-    }
+    assert_eq!(resp.status(), Status::Created);
+    let body = resp.into_string().await.unwrap();
+    assert!(body.contains("Supplier created successfully"));
+}
 
-    #[test]
-    fn test_delete_supplier_success() {
-        let controller = setup_controller();
-        let supplier = sample_supplier("SUP4");
-        controller.save_supplier(supplier.clone()).unwrap();
+#[rocket::async_test]
+async fn test_update_supplier_success() {
+    let supplier = create_supplier();
 
-        let result = controller.delete_supplier("SUP4");
-        assert!(result.is_ok());
+    let client = build_test_client_with_mock(|mock| {
+        mock.expect_get_supplier()
+            .with(eq("test-id"))
+            .return_const(Some(supplier.clone()));
+        mock.expect_update_supplier()
+            .returning(|_| Ok(()));
+    }).await;
 
-        let after_delete = controller.get_supplier("SUP4");
-        assert!(after_delete.is_none());
-    }
+    let req = create_supplier_request(&supplier);
+    let resp = put_json(&client, "/suppliers/test-id", &req).await;
 
-    #[test]
-    fn test_delete_supplier_fail_not_found() {
-        let controller = setup_controller();
-        let result = controller.delete_supplier("SUP-UNKNOWN");
-        assert!(result.is_err());
-    }
+    assert_eq!(resp.status(), Status::Ok);
+    let body = resp.into_string().await.unwrap();
+    assert!(body.contains("Supplier updated successfully"));
+}
+
+#[rocket::async_test]
+async fn test_delete_supplier_success() {
+    let client = build_test_client_with_mock(|mock| {
+        mock.expect_delete_supplier()
+            .with(eq("test-id"))
+            .returning(|_| Ok(()));
+    }).await;
+
+    let resp = client.delete("/suppliers/test-id").dispatch().await;
+    assert_eq!(resp.status(), Status::NoContent);
+}
+
+#[rocket::async_test]
+async fn test_save_supplier_failure() {
+    let client = build_test_client_with_mock(|mock| {
+        mock.expect_save_supplier()
+            .returning(|_| Err("Failed to save".to_string()));
+    }).await;
+
+    let req = SupplierRequest::new("New", "Type", 10, "123");
+    let resp = post_json(&client, "/suppliers", &req).await;
+
+    assert_eq!(resp.status(), Status::Ok);
+    let body = resp.into_string().await.unwrap();
+    assert_failure_response(&body, "Failed to create supplier");
+}
+
+#[rocket::async_test]
+async fn test_update_supplier_not_found() {
+    let client = build_test_client_with_mock(|mock| {
+        mock.expect_update_supplier()
+            .returning(|_| Err("No such supplier".to_string()));
+    }).await;
+
+    let req = SupplierRequest::new("None", "None", 0, "");
+    let resp = put_json(&client, "/suppliers/missing-id", &req).await;
+
+    assert_eq!(resp.status(), Status::Ok);
+    let body = resp.into_string().await.unwrap();
+    assert_failure_response(&body, "Failed to update supplier: No such supplier");
+}
+
+#[rocket::async_test]
+async fn test_update_supplier_get_updated_failed() {
+    let client = build_test_client_with_mock(|mock| {
+        mock.expect_update_supplier().returning(|_| Ok(()));
+        mock.expect_get_supplier()
+            .with(eq("test-id"))
+            .return_const(None);
+    }).await;
+
+    let req = SupplierRequest::new("Test", "Type", 10, "A");
+    let resp = put_json(&client, "/suppliers/test-id", &req).await;
+
+    assert_eq!(resp.status(), Status::Ok);
+    let body = resp.into_string().await.unwrap();
+    assert_failure_response(&body, "Failed to fetch updated supplier");
+}
+
+#[rocket::async_test]
+async fn test_update_supplier_failure() {
+    let client = build_test_client_with_mock(|mock| {
+        mock.expect_update_supplier()
+            .returning(|_| Err("Failed update".to_string()));
+    }).await;
+
+    let supplier = create_supplier();
+    let req = create_supplier_request(&supplier);
+
+    let resp = put_json(&client, "/suppliers/test-id", &req).await;
+
+    assert_eq!(resp.status(), Status::Ok);
+    let body = resp.into_string().await.unwrap();
+    assert_failure_response(&body, "Failed to update supplier: Failed update");
+}
+
+#[rocket::async_test]
+async fn test_delete_supplier_not_found() {
+    let client = build_test_client_with_mock(|mock| {
+        mock.expect_delete_supplier()
+            .with(eq("missing-id"))
+            .returning(|_| Err("Supplier not found".to_string()));
+    }).await;
+
+    let resp = client.delete("/suppliers/missing-id").dispatch().await;
+    assert_eq!(resp.status(), Status::NotFound);
+    let body = resp.into_string().await.unwrap();
+    assert_failure_response(&body, "Failed to delete supplier");
+}
+
+#[rocket::async_test]
+async fn test_malformed_post_request() {
+    let client = build_test_client_with_mock(|_| {}).await;
+
+    let resp = client.post("/suppliers")
+        .header(ContentType::JSON)
+        .body("{bad json")
+        .dispatch().await;
+
+    assert_eq!(resp.status(), Status::BadRequest);
+}
+
+#[rocket::async_test]
+async fn test_malformed_put_request() {
+    let client = build_test_client_with_mock(|_| {}).await;
+
+    let resp = client.put("/suppliers/test-id")
+        .header(ContentType::JSON)
+        .body("{bad json")
+        .dispatch().await;
+
+    assert_eq!(resp.status(), Status::BadRequest);
 }
