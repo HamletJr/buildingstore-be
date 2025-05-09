@@ -8,31 +8,53 @@ pub struct PelangganService;
 
 impl PelangganService {
     pub async fn create_pelanggan(db: Pool<Any>, pelanggan: &Pelanggan) -> Result<Pelanggan, sqlx::Error> {
-        todo!();
+        let conn = db.acquire().await?;
+        PelangganRepository::create_pelanggan(conn, pelanggan).await
     }
 
     pub async fn get_pelanggan_by_id(db: Pool<Any>, id: i32) -> Result<Pelanggan, sqlx::Error> {
-        todo!();
+        let conn = db.acquire().await?;
+        PelangganRepository::get_pelanggan_by_id(conn, id).await
     }
 
     pub async fn get_all_pelanggan(db: Pool<Any>) -> Result<Vec<Pelanggan>, sqlx::Error> {
-        todo!();
+        let conn = db.acquire().await?;
+        PelangganRepository::get_all_pelanggan(conn).await
     }
 
     pub async fn update_pelanggan(db: Pool<Any>, pelanggan: &Pelanggan) -> Result<Pelanggan, sqlx::Error> {
-        todo!()
+        let conn = db.acquire().await?;
+        PelangganRepository::update_pelanggan(conn, pelanggan).await
     }
 
     pub async fn delete_pelanggan(db: Pool<Any>, id: i32) -> Result<(), sqlx::Error> {
-        todo!()
+        let conn = db.acquire().await?;
+        PelangganRepository::delete_pelanggan(conn, id).await
     }
 
     pub fn sort_pelanggan(pelanggan: Vec<Pelanggan>, sort_strategy: &str) -> Vec<Pelanggan> {
-        todo!()
+        let mut pelanggan = pelanggan;
+        let mut sort_context = SortContext::new();
+        match sort_strategy {
+            "nama" => sort_context.set_strategy(Box::new(SortByNama)),
+            "tanggal_gabung" => sort_context.set_strategy(Box::new(SortByTanggalGabung)),
+            _ => {} // No sorting if the strategy is not recognized
+        }
+        sort_context.execute_sort(&mut pelanggan);
+        pelanggan
     }
 
     pub fn filter_pelanggan(pelanggan: Vec<Pelanggan>, filter_strategy: &str, keyword: &str) -> Vec<Pelanggan> {
-        todo!()
+        let mut pelanggan = pelanggan;
+        let mut filter_context = FilterContext::new();
+        match filter_strategy {
+            "nama" => filter_context.set_strategy(Box::new(FilterByNama)),
+            "tanggal_gabung_prev" => filter_context.set_strategy(Box::new(FilterByTanggalGabungPrev)),
+            "tanggal_gabung_after" => filter_context.set_strategy(Box::new(FilterByTanggalGabungAfter)),
+            _ => {} // No filtering if the strategy is not recognized
+        }
+        filter_context.execute_filter(&mut pelanggan, keyword);
+        pelanggan
     }
 }
 
