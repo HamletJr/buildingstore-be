@@ -1,7 +1,10 @@
+use serde::{Serialize, Deserialize};
 use chrono::{DateTime, Utc};
+use uuid::Uuid;
+
 use crate::manajemen_pembayaran::enums::payment_status::PaymentStatus;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum PaymentMethod {
     Cash,
     CreditCard,
@@ -9,26 +12,110 @@ pub enum PaymentMethod {
     EWallet,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Installment {
+    pub id: String,
+    pub amount: f64,
+    pub date: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Payment {
     pub id: String,
     pub transaction_id: String,
     pub amount: f64,
     pub method: PaymentMethod,
     pub status: PaymentStatus,
-    pub payment_date: DateTime<Utc>,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
     pub installments: Vec<Installment>,
-    pub due_date: Option<DateTime<Utc>>,
+    pub payment_proof: Option<String>, // Tambahkan field untuk bukti pembayaran
 }
 
-#[derive(Debug, Clone)]
-pub struct Installment {
-    pub id: String,
-    pub payment_id: String,
-    pub amount: f64,
-    pub payment_date: DateTime<Utc>,
-}
+impl Payment {
+    pub fn new(transaction_id: String, amount: f64, method: PaymentMethod) -> Self {
+        let now = Utc::now();
+        Self {
+            id: Uuid::new_v4().to_string(),
+            transaction_id,
+            amount,
+            method,
+            status: PaymentStatus::Pending,
+            created_at: now,
+            updated_at: now,
+            installments: Vec::new(),
+            payment_proof: None,
+        }
+    }
+    
+    pub fn set_payment_proof(&mut self, proof: String) {
+        self.payment_proof = Some(proof);
+        self.updated_at = Utc::now();
+    }
 
+    pub fn add_installment(&mut self, amount: f64) -> Result<(), String> {
+        if self.status != PaymentStatus::Installment {
+            return Err("Pembayaran harus berstatus CICILAN untuk menambahkan cicilan".to_string());
+        }
+        
+        let installment = Installment {
+            id: Uuid::new_v4().to_string(),
+            amount,
+            date: Utc::now(),
+        };
+        
+        self.installments.push(installment);
+        self.updated_at = Utc::now();
+        
+        Ok(())
+    }
+    
+    pub fn get_paid_amount(&self) -> f64 {
+        let installments_amount: f64 = self.installments.iter().map(|i| i.amount).sum();
+        installments_amount
+    }
+    
+    pub fn get_remaining_amount(&self) -> f64 {
+        let paid_amount = self.get_paid_amount();
+        self.amount - paid_amount
+    }
+    
+    pub fn is_fully_paid(&self) -> bool {
+        let paid_amount = self.get_paid_amount();
+        paid_amount >= self.amount
+    }
+    
+    pub fn update_status(&mut self, new_status: PaymentStatus, initial_amount: Option<f64>) -> Result<(), String> {
+        match new_status {
+            PaymentStatus::Paid => {
+                self.status = PaymentStatus::Paid;
+            },
+            PaymentStatus::Installment => {
+                self.status = PaymentStatus::Installment;
+                
+                if let Some(amount) = initial_amount {
+                    let installment = Installment {
+                        id: Uuid::new_v4().to_string(),
+                        amount,
+                        date: Utc::now(),
+                    };
+                    
+                    self.installments.push(installment);
+                }
+            },
+            PaymentStatus::Pending => {
+                self.status = PaymentStatus::Pending;
+            },
+            PaymentStatus::Cancelled => {
+                self.status = PaymentStatus::Cancelled;
+            },
+        }
+        
+        self.updated_at = Utc::now();
+        
+        Ok(())
+    }
+}
 #[cfg(test)]
 mod tests {
     use super::*;
