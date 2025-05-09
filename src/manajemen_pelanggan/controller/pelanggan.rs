@@ -9,27 +9,44 @@ use crate::manajemen_pelanggan::service::pelanggan::PelangganService;
 
 #[get("/pelanggan?<sort>&<filter>&<keyword>")]
 pub async fn get_all_pelanggan(db: &State<Pool<Any>>, sort: Option<String>, filter: Option<String>, keyword: Option<String>) -> Result<Json<Vec<Pelanggan>>, Status> {
-    todo!()
+    let pelanggan = PelangganService::get_all_pelanggan(db.inner().clone()).await.map_err(|_| Status::InternalServerError)?;
+    let mut pelanggan = pelanggan.clone();
+    if let Some(sort_strategy) = &sort {
+        pelanggan = PelangganService::sort_pelanggan(pelanggan, sort_strategy);
+    }
+    if let Some(filter_strategy) = &filter {
+        if let Some(keyword_value) = &keyword {
+            pelanggan = PelangganService::filter_pelanggan(pelanggan, filter_strategy, keyword_value);
+        }
+    }
+    Ok(Json(pelanggan))
 }
 
 #[post("/pelanggan", data = "<pelanggan>")]
 pub async fn create_pelanggan(db: &State<Pool<Any>>, pelanggan: Json<Pelanggan>) -> Result<Json<Pelanggan>, Status> {
-    todo!()
+    let new_pelanggan = PelangganService::create_pelanggan(db.inner().clone(), &pelanggan).await.map_err(|_| Status::InternalServerError)?;
+    Ok(Json(new_pelanggan))
 }
 
 #[get("/pelanggan/<id>")]
 pub async fn get_pelanggan_by_id(db: &State<Pool<Any>>, id: i32) -> Result<Json<Pelanggan>, Status> {
-    todo!()
+    let pelanggan = PelangganService::get_pelanggan_by_id(db.inner().clone(), id).await.map_err(|_| Status::NotFound)?;
+    Ok(Json(pelanggan))
 }
 
 #[patch("/pelanggan/<id>", data = "<pelanggan>")]
 pub async fn update_pelanggan(db: &State<Pool<Any>>, id: i32, pelanggan: Json<Pelanggan>) -> Result<Json<Pelanggan>, Status> {
-    todo!()
+    if pelanggan.id != id {
+        return Err(Status::BadRequest);
+    }
+    let updated_pelanggan = PelangganService::update_pelanggan(db.inner().clone(), &pelanggan).await.map_err(|_| Status::InternalServerError)?;
+    Ok(Json(updated_pelanggan))
 }
 
 #[delete("/pelanggan/<id>")]
 pub async fn delete_pelanggan(db: &State<Pool<Any>>, id: i32) -> Result<Status, Status> {
-    todo!()
+    PelangganService::delete_pelanggan(db.inner().clone(), id).await.map_err(|_| Status::InternalServerError)?;
+    Ok(Status::NoContent)
 }
 
 #[cfg(test)]
