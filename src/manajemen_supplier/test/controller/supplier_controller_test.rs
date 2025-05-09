@@ -38,6 +38,19 @@ impl SupplierService for MockSupplierServiceMock {
     }
 }
 
+impl SupplierRequest {
+    pub fn new(name: &str, jenis_barang: &str, jumlah_barang: i32, resi: &str) -> Self {
+        Self {
+            name: name.to_string(),
+            jenis_barang: jenis_barang.to_string(),
+            jumlah_barang,
+            resi: resi.to_string(),
+        }
+    }
+}
+
+// --- Helpers ---
+
 fn create_supplier() -> Supplier {
     Supplier {
         id: "test-id".to_string(),
@@ -49,293 +62,218 @@ fn create_supplier() -> Supplier {
     }
 }
 
-#[rocket::async_test]
-async fn test_get_supplier_found() {
+fn create_supplier_request(s: &Supplier) -> SupplierRequest {
+    SupplierRequest::new(&s.name, &s.jenis_barang, s.jumlah_barang, &s.resi)
+}
+
+async fn build_test_client_with_mock(
+    setup_mock: impl FnOnce(&mut MockSupplierServiceMock)
+) -> Client {
     let mut mock = MockSupplierServiceMock::new();
-    let supplier = create_supplier();
-
-    mock.expect_get_supplier()
-        .with(eq("test-id"))
-        .return_const(Some(supplier.clone()));
-
+    setup_mock(&mut mock);
     let service: Arc<dyn SupplierService> = Arc::new(mock);
     let rocket = rocket::build().manage(service).mount("/", supplier_routes());
-    let client = Client::tracked(rocket).await.unwrap();
+    Client::tracked(rocket).await.unwrap()
+}
 
-    let response = client.get("/suppliers/test-id").dispatch().await;
-    assert_eq!(response.status(), Status::Ok);
+async fn post_json<'a>(client: &'a Client, url: &'a str, req: &'a SupplierRequest) -> rocket::local::asynchronous::LocalResponse<'a> {
+    client.post(url)
+        .header(ContentType::JSON)
+        .body(serde_json::to_string(req).unwrap())
+        .dispatch().await
+}
 
-    let body = response.into_string().await.unwrap();
+async fn put_json<'a>(client: &'a Client, url: &'a str, req: &'a SupplierRequest) -> rocket::local::asynchronous::LocalResponse<'a> {
+    client.put(url)
+        .header(ContentType::JSON)
+        .body(serde_json::to_string(req).unwrap())
+        .dispatch().await
+}
+
+fn assert_failure_response(res: &str, message_substr: &str) {
+    assert!(res.contains(message_substr));
+    assert!(res.contains("\"success\":false"));
+}
+
+// --- Tests ---
+
+#[rocket::async_test]
+async fn test_get_supplier_found() {
+    let supplier = create_supplier();
+
+    let client = build_test_client_with_mock(|mock| {
+        mock.expect_get_supplier()
+            .with(eq("test-id"))
+            .return_const(Some(supplier.clone()));
+    }).await;
+
+    let resp = client.get("/suppliers/test-id").dispatch().await;
+    assert_eq!(resp.status(), Status::Ok);
+
+    let body = resp.into_string().await.unwrap();
     assert!(body.contains("Supplier found"));
-    assert!(body.contains("Test Name"));
+    assert!(body.contains(&supplier.name));
 }
 
 #[rocket::async_test]
 async fn test_get_supplier_not_found() {
-    let mut mock = MockSupplierServiceMock::new();
+    let client = build_test_client_with_mock(|mock| {
+        mock.expect_get_supplier()
+            .with(eq("unknown-id"))
+            .return_const(None);
+    }).await;
 
-    mock.expect_get_supplier()
-        .with(eq("unknown-id"))
-        .return_const(None);
-
-    let service: Arc<dyn SupplierService> = Arc::new(mock);
-    let rocket = rocket::build().manage(service).mount("/", supplier_routes());
-    let client = Client::tracked(rocket).await.unwrap();
-
-    let response = client.get("/suppliers/unknown-id").dispatch().await;
-    assert_eq!(response.status(), Status::NotFound);
-
-    let body = response.into_string().await.unwrap();
+    let resp = client.get("/suppliers/unknown-id").dispatch().await;
+    assert_eq!(resp.status(), Status::NotFound);
+    let body = resp.into_string().await.unwrap();
     assert!(body.contains("not found"));
 }
 
 #[rocket::async_test]
 async fn test_save_supplier_success() {
-    let mut mock = MockSupplierServiceMock::new();
+    let client = build_test_client_with_mock(|mock| {
+        mock.expect_save_supplier()
+            .returning(|sup| Ok(sup));
+    }).await;
 
-    mock.expect_save_supplier()
-        .returning(|sup| Ok(sup));
+    let req = SupplierRequest::new("New", "Type", 10, "123");
+    let resp = post_json(&client, "/suppliers", &req).await;
 
-    let service: Arc<dyn SupplierService> = Arc::new(mock);
-    let rocket = rocket::build().manage(service).mount("/", supplier_routes());
-    let client = Client::tracked(rocket).await.unwrap();
-
-    let req = SupplierRequest {
-        name: "New".to_string(),
-        jenis_barang: "Type".to_string(),
-        jumlah_barang: 10,
-        resi: "123".to_string(),
-    };
-
-    let response = client.post("/suppliers")
-        .header(ContentType::JSON)
-        .body(serde_json::to_string(&req).unwrap())
-        .dispatch().await;
-
-    assert_eq!(response.status(), Status::Created);
-    let body = response.into_string().await.unwrap();
+    assert_eq!(resp.status(), Status::Created);
+    let body = resp.into_string().await.unwrap();
     assert!(body.contains("Supplier created successfully"));
 }
 
 #[rocket::async_test]
 async fn test_update_supplier_success() {
-    let mut mock = MockSupplierServiceMock::new();
     let supplier = create_supplier();
 
-    mock.expect_get_supplier()
-        .with(eq("test-id"))
-        .return_const(Some(supplier.clone()));
-    mock.expect_update_supplier()
-        .returning(|_| Ok(()));
+    let client = build_test_client_with_mock(|mock| {
+        mock.expect_get_supplier()
+            .with(eq("test-id"))
+            .return_const(Some(supplier.clone()));
+        mock.expect_update_supplier()
+            .returning(|_| Ok(()));
+    }).await;
 
-    let service: Arc<dyn SupplierService> = Arc::new(mock);
-    let rocket = rocket::build().manage(service).mount("/", supplier_routes());
-    let client = Client::tracked(rocket).await.unwrap();
+    let req = create_supplier_request(&supplier);
+    let resp = put_json(&client, "/suppliers/test-id", &req).await;
 
-    let req = SupplierRequest {
-        name: supplier.name.clone(),
-        jenis_barang: supplier.jenis_barang.clone(),
-        jumlah_barang: supplier.jumlah_barang,
-        resi: supplier.resi.clone(),
-    };
-
-    let response = client.put("/suppliers/test-id")
-        .header(ContentType::JSON)
-        .body(serde_json::to_string(&req).unwrap())
-        .dispatch().await;
-
-    assert_eq!(response.status(), Status::Ok);
-    let body = response.into_string().await.unwrap();
+    assert_eq!(resp.status(), Status::Ok);
+    let body = resp.into_string().await.unwrap();
     assert!(body.contains("Supplier updated successfully"));
 }
 
 #[rocket::async_test]
 async fn test_delete_supplier_success() {
+    let client = build_test_client_with_mock(|mock| {
+        mock.expect_delete_supplier()
+            .with(eq("test-id"))
+            .returning(|_| Ok(()));
+    }).await;
 
-    let mut mock = MockSupplierServiceMock::new();
-
-    mock.expect_delete_supplier()
-        .with(eq("test-id"))
-        .returning(|_| Ok(()));
-
-    let service: Arc<dyn SupplierService> = Arc::new(mock);
-    let rocket = rocket::build().manage(service).mount("/", supplier_routes());
-    let client = Client::tracked(rocket).await.unwrap();
-
-    let response = client.delete("/suppliers/test-id").dispatch().await;
-    assert_eq!(response.status(), Status::NoContent);
+    let resp = client.delete("/suppliers/test-id").dispatch().await;
+    assert_eq!(resp.status(), Status::NoContent);
 }
 
 #[rocket::async_test]
 async fn test_save_supplier_failure() {
-    let mut mock = MockSupplierServiceMock::new();
+    let client = build_test_client_with_mock(|mock| {
+        mock.expect_save_supplier()
+            .returning(|_| Err("Failed to save".to_string()));
+    }).await;
 
-    mock.expect_save_supplier()
-        .returning(|_| Err("Failed to save".to_string()));
+    let req = SupplierRequest::new("New", "Type", 10, "123");
+    let resp = post_json(&client, "/suppliers", &req).await;
 
-    let service: Arc<dyn SupplierService> = Arc::new(mock);
-    let rocket = rocket::build().manage(service).mount("/", supplier_routes());
-    let client = Client::tracked(rocket).await.unwrap();
-
-    let req = SupplierRequest {
-        name: "New".to_string(),
-        jenis_barang: "Type".to_string(),
-        jumlah_barang: 10,
-        resi: "123".to_string(),
-    };
-
-    let response = client.post("/suppliers")
-        .header(ContentType::JSON)
-        .body(serde_json::to_string(&req).unwrap())
-        .dispatch().await;
-
-    // Your controller returns 200 OK with an error JSON body
-    assert_eq!(response.status(), Status::Ok);
-
-    let body = response.into_string().await.unwrap();
-    assert!(body.contains("Failed to create supplier"));
-    assert!(body.contains("\"success\":false"));
+    assert_eq!(resp.status(), Status::Ok);
+    let body = resp.into_string().await.unwrap();
+    assert_failure_response(&body, "Failed to create supplier");
 }
 
 #[rocket::async_test]
 async fn test_update_supplier_not_found() {
-    let mut mock = MockSupplierServiceMock::new();
+    let client = build_test_client_with_mock(|mock| {
+        mock.expect_update_supplier()
+            .returning(|_| Err("No such supplier".to_string()));
+    }).await;
 
-    mock.expect_update_supplier()
-        .returning(|_| Err("No such supplier".to_string()));
+    let req = SupplierRequest::new("None", "None", 0, "");
+    let resp = put_json(&client, "/suppliers/missing-id", &req).await;
 
-    let service: Arc<dyn SupplierService> = Arc::new(mock);
-    let rocket = rocket::build().manage(service).mount("/", supplier_routes());
-    let client = Client::tracked(rocket).await.unwrap();
-
-    let req = SupplierRequest {
-        name: "None".to_string(),
-        jenis_barang: "None".to_string(),
-        jumlah_barang: 0,
-        resi: "".to_string(),
-    };
-
-    let response = client.put("/suppliers/missing-id")
-        .header(ContentType::JSON)
-        .body(serde_json::to_string(&req).unwrap())
-        .dispatch().await;
-
-    assert_eq!(response.status(), Status::Ok);
-    let body = response.into_string().await.unwrap();
-    assert!(body.contains("Failed to update supplier: No such supplier"));
-    assert!(body.contains("\"success\":false"));
+    assert_eq!(resp.status(), Status::Ok);
+    let body = resp.into_string().await.unwrap();
+    assert_failure_response(&body, "Failed to update supplier: No such supplier");
 }
 
 #[rocket::async_test]
 async fn test_update_supplier_get_updated_failed() {
-    let mut mock = MockSupplierServiceMock::new();
+    let client = build_test_client_with_mock(|mock| {
+        mock.expect_update_supplier().returning(|_| Ok(()));
+        mock.expect_get_supplier()
+            .with(eq("test-id"))
+            .return_const(None);
+    }).await;
 
-    mock.expect_update_supplier()
-        .returning(|_| Ok(()));
-    mock.expect_get_supplier()
-        .with(eq("test-id"))
-        .return_const(None);
+    let req = SupplierRequest::new("Test", "Type", 10, "A");
+    let resp = put_json(&client, "/suppliers/test-id", &req).await;
 
-    let service: Arc<dyn SupplierService> = Arc::new(mock);
-    let rocket = rocket::build().manage(service).mount("/", supplier_routes());
-    let client = Client::tracked(rocket).await.unwrap();
-
-    let req = SupplierRequest {
-        name: "Test".to_string(),
-        jenis_barang: "Type".to_string(),
-        jumlah_barang: 10,
-        resi: "A".to_string(),
-    };
-
-    let response = client.put("/suppliers/test-id")
-        .header(ContentType::JSON)
-        .body(serde_json::to_string(&req).unwrap())
-        .dispatch().await;
-
-    assert_eq!(response.status(), Status::Ok);
-    let body = response.into_string().await.unwrap();
-    assert!(body.contains("Failed to fetch updated supplier"));
-    assert!(body.contains("\"success\":false"));
+    assert_eq!(resp.status(), Status::Ok);
+    let body = resp.into_string().await.unwrap();
+    assert_failure_response(&body, "Failed to fetch updated supplier");
 }
 
 #[rocket::async_test]
 async fn test_update_supplier_failure() {
-    let mut mock = MockSupplierServiceMock::new();
+    let client = build_test_client_with_mock(|mock| {
+        mock.expect_update_supplier()
+            .returning(|_| Err("Failed update".to_string()));
+    }).await;
+
     let supplier = create_supplier();
+    let req = create_supplier_request(&supplier);
 
-    mock.expect_update_supplier()
-        .returning(|_| Err("Failed update".to_string()));
+    let resp = put_json(&client, "/suppliers/test-id", &req).await;
 
-    let service: Arc<dyn SupplierService> = Arc::new(mock);
-    let rocket = rocket::build().manage(service).mount("/", supplier_routes());
-    let client = Client::tracked(rocket).await.unwrap();
-
-    let req = SupplierRequest {
-        name: supplier.name.clone(),
-        jenis_barang: supplier.jenis_barang.clone(),
-        jumlah_barang: supplier.jumlah_barang,
-        resi: supplier.resi.clone(),
-    };
-
-    let response = client.put("/suppliers/test-id")
-        .header(ContentType::JSON)
-        .body(serde_json::to_string(&req).unwrap())
-        .dispatch().await;
-
-    assert_eq!(response.status(), Status::Ok);
-    let body = response.into_string().await.unwrap();
-    assert!(body.contains("Failed to update supplier: Failed update"));
-    assert!(body.contains("\"success\":false"));
+    assert_eq!(resp.status(), Status::Ok);
+    let body = resp.into_string().await.unwrap();
+    assert_failure_response(&body, "Failed to update supplier: Failed update");
 }
 
 #[rocket::async_test]
 async fn test_delete_supplier_not_found() {
-    let mut mock = MockSupplierServiceMock::new();
+    let client = build_test_client_with_mock(|mock| {
+        mock.expect_delete_supplier()
+            .with(eq("missing-id"))
+            .returning(|_| Err("Supplier not found".to_string()));
+    }).await;
 
-    mock.expect_delete_supplier()
-        .with(eq("missing-id"))
-        .returning(|_| Err("Supplier not found".to_string()));
-
-    let service: Arc<dyn SupplierService> = Arc::new(mock);
-    let rocket = rocket::build().manage(service).mount("/", supplier_routes());
-    let client = Client::tracked(rocket).await.unwrap();
-
-    let response = client.delete("/suppliers/missing-id").dispatch().await;
-
-    assert_eq!(response.status(), Status::NotFound);
-    let body = response.into_string().await.unwrap();
-    assert!(body.contains("Failed to delete supplier"));
-    assert!(body.contains("\"success\":false"));
+    let resp = client.delete("/suppliers/missing-id").dispatch().await;
+    assert_eq!(resp.status(), Status::NotFound);
+    let body = resp.into_string().await.unwrap();
+    assert_failure_response(&body, "Failed to delete supplier");
 }
 
 #[rocket::async_test]
 async fn test_malformed_post_request() {
-    let mock = MockSupplierServiceMock::new();
+    let client = build_test_client_with_mock(|_| {}).await;
 
-    let service: Arc<dyn SupplierService> = Arc::new(mock);
-    let rocket = rocket::build().manage(service).mount("/", supplier_routes());
-    let client = Client::tracked(rocket).await.unwrap();
-
-    let response = client.post("/suppliers")
+    let resp = client.post("/suppliers")
         .header(ContentType::JSON)
         .body("{bad json")
         .dispatch().await;
 
-    assert_eq!(response.status(), Status::BadRequest);
+    assert_eq!(resp.status(), Status::BadRequest);
 }
 
 #[rocket::async_test]
 async fn test_malformed_put_request() {
-    let mock = MockSupplierServiceMock::new();
+    let client = build_test_client_with_mock(|_| {}).await;
 
-    let service: Arc<dyn SupplierService> = Arc::new(mock);
-    let rocket = rocket::build().manage(service).mount("/", supplier_routes());
-    let client = Client::tracked(rocket).await.unwrap();
-
-    let response = client.put("/suppliers/test-id")
+    let resp = client.put("/suppliers/test-id")
         .header(ContentType::JSON)
         .body("{bad json")
         .dispatch().await;
 
-    assert_eq!(response.status(), Status::BadRequest);
+    assert_eq!(resp.status(), Status::BadRequest);
 }
