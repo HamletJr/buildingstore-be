@@ -39,35 +39,35 @@ fn test_create_produk_without_deskripsi() {
 fn test_validasi_produk() {
     // Testing valid product
     let result = validate_produk(
-        "Laptop Gaming".to_string(),
-        "Elektronik".to_string(),
+        &"Laptop Gaming".to_string(),  // Add reference
+        &"Elektronik".to_string(),     // Add reference
         15_000_000.0,
         10,
-        Some("Laptop dengan RTX 4060".to_string()),
+        &Some("Laptop dengan RTX 4060".to_string()),  // Add reference
     );
     assert!(result.is_ok());
     
     // Testing invalid product (empty name)
     let result = validate_produk(
-        "".to_string(),
-        "Elektronik".to_string(),
+        &"".to_string(),               // Add reference
+        &"Elektronik".to_string(),     // Add reference
         15_000_000.0,
         10,
-        Some("Laptop dengan RTX 4060".to_string()),
+        &Some("Laptop dengan RTX 4060".to_string()),  // Add reference
     );
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err(), "Nama produk tidak boleh kosong");
+    assert_eq!(result.unwrap_err(), vec!["Nama produk tidak boleh kosong"]);
     
     // Testing invalid product (negative price)
     let result = validate_produk(
-        "Laptop Gaming".to_string(),
-        "Elektronik".to_string(),
+        &"Laptop Gaming".to_string(),  // Add reference
+        &"Elektronik".to_string(),     // Add reference
         -5000.0,
         10,
-        Some("Laptop dengan RTX 4060".to_string()),
+        &Some("Laptop dengan RTX 4060".to_string()),  // Add reference
     );
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err(), "Harga produk tidak boleh negatif");
+    assert_eq!(result.unwrap_err(), vec!["Harga tidak boleh negatif"]);
 }
 
 #[test]
@@ -91,7 +91,7 @@ fn test_create_with_validation() {
         Some("Laptop dengan RTX 4060".to_string()),
     );
     assert!(result.is_err());
-    assert_eq!(result.unwrap_err(), "Nama produk tidak boleh kosong");
+    assert_eq!(result.unwrap_err(), vec!["Nama produk tidak boleh kosong"]);
 }
 
 #[test]
@@ -122,7 +122,7 @@ fn test_builder_validation() {
         .build();
     
     assert!(produk_result.is_err());
-    assert_eq!(produk_result.unwrap_err(), "Nama produk tidak boleh kosong");
+    assert_eq!(produk_result.unwrap_err(), vec!["Nama produk tidak boleh kosong"]);
     
     // Test validation with negative price
     let produk_result = ProdukBuilder::new("Laptop Gaming".to_string(), "Elektronik".to_string())
@@ -131,7 +131,7 @@ fn test_builder_validation() {
         .build();
     
     assert!(produk_result.is_err());
-    assert_eq!(produk_result.unwrap_err(), "Harga produk tidak boleh negatif");
+    assert_eq!(produk_result.unwrap_err(), vec!["Harga tidak boleh negatif"]);
 }
 
 #[test]
