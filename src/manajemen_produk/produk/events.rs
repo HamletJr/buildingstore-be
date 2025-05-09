@@ -1,11 +1,12 @@
 use std::sync::{Arc, Mutex};
+use std::fmt::Debug;
 use super::model::Produk;
 
-pub trait ProdukObserver: Send + Sync {
+pub trait ProdukObserver: Send + Sync + Debug {
     fn on_stock_changed(&self, produk: &Produk, old_stock: u32);
 }
 
-#[derive(Clone)]
+#[derive(Debug, Clone)]  // Remove PartialEq
 pub struct ProdukEventPublisher {
     observers: Arc<Mutex<Vec<Arc<dyn ProdukObserver>>>>,
 }
