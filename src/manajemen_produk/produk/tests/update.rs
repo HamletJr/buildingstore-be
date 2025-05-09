@@ -11,7 +11,7 @@ fn test_update_produk_harga() {
     );
     
     // Update harga
-    produk.harga = 14_500_000.0;
+    produk.set_harga(14_500_000.0).unwrap();
     
     assert_eq!(produk.harga, 14_500_000.0);
 }
@@ -27,7 +27,7 @@ fn test_update_produk_stok() {
     );
     
     // Update stok
-    produk.stok = 5;
+    produk.set_stok(5);
     
     assert_eq!(produk.stok, 5);
 }
