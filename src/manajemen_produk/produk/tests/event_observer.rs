@@ -1,4 +1,3 @@
-// event_observer.rs
 use crate::manajemen_produk::produk::events::ProdukObserver;
 use crate::manajemen_produk::produk::model::Produk;
 use std::sync::{Arc, Mutex};
