@@ -1,6 +1,4 @@
-use serde::Serialize;
-
-#[derive(Debug, Clone, PartialEq, Serialize)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum PaymentStatus {
     Paid,    // LUNAS
     Installment,  // CICILAN

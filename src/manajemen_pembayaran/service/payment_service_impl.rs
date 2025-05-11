@@ -1,155 +1,85 @@
-use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
+use std::sync::Arc;
 
-use crate::manajemen_pembayaran::repository::payment_repository::PaymentRepository;
-use crate::manajemen_pembayaran::service::payment_service::PaymentService;
 use crate::manajemen_pembayaran::model::payment::{Payment, PaymentMethod};
 use crate::manajemen_pembayaran::enums::payment_status::PaymentStatus;
+use crate::manajemen_pembayaran::repository::payment_repository::PaymentRepository;
 use crate::manajemen_pembayaran::patterns::observer::PaymentSubject;
+use crate::manajemen_pembayaran::patterns::command::{AddInstallmentCommand, CreatePaymentCommand, DeletePaymentCommand, PaymentCommand, UpdatePaymentStatusCommand};
+use crate::manajemen_pembayaran::service::payment_service::PaymentService;
 
 pub struct PaymentServiceImpl {
     repository: Arc<dyn PaymentRepository>,
-    observer_subject: Arc<PaymentSubject>,
+    subject: Arc<PaymentSubject>,
 }
 
 impl PaymentServiceImpl {
-    pub fn new(repository: Arc<dyn PaymentRepository>, observer_subject: Arc<PaymentSubject>) -> Self {
+    pub fn new(repository: Arc<dyn PaymentRepository>, subject: Arc<PaymentSubject>) -> Self {
         Self {
             repository,
-            observer_subject,
+            subject,
         }
     }
 }
 
 impl PaymentService for PaymentServiceImpl {
-    fn create_payment(&self, transaction_id: String, amount: f64, method: PaymentMethod) -> Result<Payment, String> {
-        if amount <= 0.0 {
-            return Err("Jumlah pembayaran harus lebih dari 0".to_string());
-        }
-        
-        if let Some(_) = self.get_payment_by_transaction(&transaction_id) {
-            return Err(format!("Transaksi dengan ID {} sudah memiliki pembayaran", transaction_id));
-        }
-        
-        let payment = Payment::new(transaction_id, amount, method);
-        
-        self.repository.save(payment.clone());
-        
-        let subject = Arc::clone(&self.observer_subject);
-        subject.notify_payment_created(&payment);
-        
-        Ok(payment)
+    fn create_payment(
+        &self,
+        transaction_id: String,
+        amount: f64,
+        method: PaymentMethod,
+    ) -> Result<Payment, String> {
+        let command = CreatePaymentCommand::new(
+            transaction_id,
+            amount,
+            method,
+            self.repository.clone(),
+            self.subject.clone(),
+        );
+        command.execute()
     }
-    
-    fn update_payment_status(&self, payment_id: String, new_status: PaymentStatus, initial_amount: Option<f64>) -> Result<Payment, String> {
-        let mut payment = match self.repository.find_by_id(&payment_id) {
-            Some(p) => p,
-            None => return Err(format!("Pembayaran dengan ID {} tidak ditemukan", payment_id)),
-        };
-        
-        payment.update_status(new_status.clone(), initial_amount)?;
-        
-        self.repository.update(payment.clone());
-        
-        let subject = Arc::clone(&self.observer_subject);
-        subject.notify_payment_status_changed(&payment);
-        
-        Ok(payment)
+
+    fn update_payment_status(
+        &self,
+        payment_id: String,
+        new_status: PaymentStatus,
+        additional_amount: Option<f64>,
+    ) -> Result<Payment, String> {
+        let command = UpdatePaymentStatusCommand::new(
+            payment_id,
+            new_status,
+            additional_amount,
+            self.repository.clone(),
+            self.subject.clone(),
+        );
+        command.execute()
     }
-    
-    fn add_installment(&self, payment_id: &str, amount: f64) -> Result<Payment, String> {
-        let mut payment = match self.repository.find_by_id(payment_id) {
-            Some(p) => p,
-            None => return Err(format!("Pembayaran dengan ID {} tidak ditemukan", payment_id)),
-        };
-        
-        if amount <= 0.0 {
-            return Err("Jumlah cicilan harus lebih dari 0".to_string());
-        }
-        
-        payment.add_installment(amount)?;
-        
-        if payment.is_fully_paid() {
-            payment.update_status(PaymentStatus::Paid, None)?;
-        }
-        
-        self.repository.update(payment.clone());
-        
-        let subject = Arc::clone(&self.observer_subject);
-        subject.notify_installment_added(&payment);
-        
-        Ok(payment)
+
+    fn delete_payment(&self, payment_id: String) -> Result<(), String> {
+        let command = DeletePaymentCommand::new(payment_id, self.repository.clone());
+        command.execute()
     }
-    
+
     fn get_payment(&self, payment_id: &str) -> Option<Payment> {
         self.repository.find_by_id(payment_id)
     }
-    
+
     fn get_payment_by_transaction(&self, transaction_id: &str) -> Option<Payment> {
         self.repository.find_by_transaction_id(transaction_id)
     }
-    
+
     fn get_all_payments(&self, filters: Option<HashMap<String, String>>) -> Vec<Payment> {
-        let mut payments = self.repository.find_all();
-        
-        if let Some(filters) = filters {
-            if let Some(status) = filters.get("status") {
-                let status = match status.to_uppercase().as_str() {
-                    "LUNAS" => Some(PaymentStatus::Paid),
-                    "CICILAN" => Some(PaymentStatus::Installment),
-                    "PENDING" => Some(PaymentStatus::Pending),
-                    "CANCELLED" => Some(PaymentStatus::Cancelled),
-                    _ => None,
-                };
-                
-                if let Some(status) = status {
-                    payments = payments.into_iter().filter(|p| p.status == status).collect();
-                }
-            }
-            
-            if let Some(method) = filters.get("method") {
-                let method = match method.to_uppercase().as_str() {
-                    "CASH" => Some(PaymentMethod::Cash),
-                    "CARD" | "CREDIT_CARD" => Some(PaymentMethod::CreditCard),
-                    "TRANSFER" | "BANK_TRANSFER" => Some(PaymentMethod::BankTransfer),
-                    "E_WALLET" => Some(PaymentMethod::EWallet),
-                    _ => None,
-                };
-                
-                if let Some(method) = method {
-                    payments = payments.into_iter().filter(|p| p.method == method).collect();
-                }
-            }
-        }
-        
-        payments
+        self.repository.find_all(filters)
     }
-    
-    fn delete_payment(&self, payment_id: String) -> Result<(), String> {
-        let payment = match self.repository.find_by_id(&payment_id) {
-            Some(p) => p,
-            None => return Err(format!("Pembayaran dengan ID {} tidak ditemukan", payment_id)),
-        };
-        
-        self.repository.delete(&payment_id);
-        
-        let subject = Arc::clone(&self.observer_subject);
-        subject.notify_payment_deleted(&payment);
-        
-        Ok(())
-    }
-    
-    fn update_payment_proof(&self, payment_id: &str, proof: String) -> Result<Payment, String> {
-        let mut payment = match self.repository.find_by_id(payment_id) {
-            Some(p) => p,
-            None => return Err(format!("Pembayaran dengan ID {} tidak ditemukan", payment_id)),
-        };
-        
-        payment.set_payment_proof(proof);
-        
-        self.repository.update(payment.clone());
-        
-        Ok(payment)
+
+    fn add_installment(&self, payment_id: &str, amount: f64) -> Result<Payment, String> {
+        let command = AddInstallmentCommand::new(
+            payment_id.to_string(),
+            amount,
+            self.repository.clone(),
+            self.subject.clone(),
+        );
+        command.execute()
     }
 }
 
