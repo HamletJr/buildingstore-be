@@ -1,6 +1,9 @@
 use std::sync::Arc;
 use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
+use rocket::{get, post, put, delete, routes, Route, State};
+use rocket::serde::{json::Json};
+use rocket::serde::json::serde_json;
 
 use crate::manajemen_pembayaran::model::payment::{Payment, PaymentMethod};
 use crate::manajemen_pembayaran::enums::payment_status::PaymentStatus;
@@ -32,7 +35,7 @@ pub struct PaymentFilterRequest {
     pub method: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct ApiResponse<T> {
     pub success: bool,
     pub data: Option<T>,
@@ -197,6 +200,76 @@ impl PaymentController {
             },
         }
     }
+}
+
+#[post("/create", format = "json", data = "<request>")]
+pub fn create_payment_endpoint(
+    request: Json<CreatePaymentRequest>,
+    controller: &State<PaymentController>,
+) -> Json<ApiResponse<Payment>> {
+    Json(controller.create_payment(request.into_inner()))
+}
+
+#[put("/update_status", format = "json", data = "<request>")]
+pub fn update_payment_status_endpoint(
+    request: Json<UpdatePaymentStatusRequest>,
+    controller: &State<PaymentController>,
+) -> Json<ApiResponse<Payment>> {
+    Json(controller.update_payment_status(request.into_inner()))
+}
+
+#[put("/add_installment", format = "json", data = "<request>")]
+pub fn add_installment_endpoint(
+    request: Json<AddInstallmentRequest>,
+    controller: &State<PaymentController>,
+) -> Json<ApiResponse<Payment>> {
+    Json(controller.add_installment(request.into_inner()))
+}
+
+#[get("/<payment_id>")]
+pub fn get_payment_endpoint(
+    payment_id: String,
+    controller: &State<PaymentController>,
+) -> Json<ApiResponse<Payment>> {
+    Json(controller.get_payment(&payment_id))
+}
+
+#[get("/transaction/<transaction_id>")]
+pub fn get_payment_by_transaction_endpoint(
+    transaction_id: String,
+    controller: &State<PaymentController>,
+) -> Json<ApiResponse<Payment>> {
+    Json(controller.get_payment_by_transaction(&transaction_id))
+}
+
+#[get("/all?<filter>")]
+pub fn get_all_payments_endpoint(
+    filter: Option<&str>,
+    controller: &State<PaymentController>,
+) -> Json<ApiResponse<Vec<Payment>>> {
+    let filter_request = filter
+        .and_then(|f| serde_json::from_str::<PaymentFilterRequest>(f).ok());
+    Json(controller.get_all_payments(filter_request))
+}
+
+#[delete("/<payment_id>")]
+pub fn delete_payment_endpoint(
+    payment_id: String,
+    controller: &State<PaymentController>,
+) -> Json<ApiResponse<()>> {
+    Json(controller.delete_payment(&payment_id))
+}
+
+pub fn get_routes() -> Vec<Route> {
+    routes![
+        create_payment_endpoint,
+        update_payment_status_endpoint,
+        add_installment_endpoint,
+        get_payment_endpoint,
+        get_payment_by_transaction_endpoint,
+        get_all_payments_endpoint,
+        delete_payment_endpoint,
+    ]
 }
 
 #[cfg(test)]
