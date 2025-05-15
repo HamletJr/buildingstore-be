@@ -1,9 +1,10 @@
 use std::sync::Arc;
 use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
-use rocket::{get, post, put, delete, routes, Route, State};
+use rocket::{get, post, put, delete, routes, Route, State, catch, catchers};
 use rocket::serde::{json::Json};
 use rocket::serde::json::serde_json;
+use rocket::http::Status;
 
 use crate::manajemen_pembayaran::model::payment::{Payment, PaymentMethod};
 use crate::manajemen_pembayaran::enums::payment_status::PaymentStatus;
@@ -202,20 +203,32 @@ impl PaymentController {
     }
 }
 
+// Updated endpoints to return correct status codes for invalid scenarios.
+
 #[post("/create", format = "json", data = "<request>")]
 pub fn create_payment_endpoint(
     request: Json<CreatePaymentRequest>,
     controller: &State<PaymentController>,
-) -> Json<ApiResponse<Payment>> {
-    Json(controller.create_payment(request.into_inner()))
+) -> (Status, Json<ApiResponse<Payment>>) {
+    let response = controller.create_payment(request.into_inner());
+    if response.success {
+        (Status::Ok, Json(response))
+    } else {
+        (Status::BadRequest, Json(response))
+    }
 }
 
 #[put("/update_status", format = "json", data = "<request>")]
 pub fn update_payment_status_endpoint(
     request: Json<UpdatePaymentStatusRequest>,
     controller: &State<PaymentController>,
-) -> Json<ApiResponse<Payment>> {
-    Json(controller.update_payment_status(request.into_inner()))
+) -> (Status, Json<ApiResponse<Payment>>) {
+    let response = controller.update_payment_status(request.into_inner());
+    if response.success {
+        (Status::Ok, Json(response))
+    } else {
+        (Status::BadRequest, Json(response))
+    }
 }
 
 #[put("/add_installment", format = "json", data = "<request>")]
@@ -230,8 +243,13 @@ pub fn add_installment_endpoint(
 pub fn get_payment_endpoint(
     payment_id: String,
     controller: &State<PaymentController>,
-) -> Json<ApiResponse<Payment>> {
-    Json(controller.get_payment(&payment_id))
+) -> (Status, Json<ApiResponse<Payment>>) {
+    let response = controller.get_payment(&payment_id);
+    if response.success {
+        (Status::Ok, Json(response))
+    } else {
+        (Status::NotFound, Json(response))
+    }
 }
 
 #[get("/transaction/<transaction_id>")]
@@ -256,8 +274,31 @@ pub fn get_all_payments_endpoint(
 pub fn delete_payment_endpoint(
     payment_id: String,
     controller: &State<PaymentController>,
-) -> Json<ApiResponse<()>> {
-    Json(controller.delete_payment(&payment_id))
+) -> (Status, Json<ApiResponse<()>>) {
+    let response = controller.delete_payment(&payment_id);
+    if response.success {
+        (Status::Ok, Json(response))
+    } else {
+        (Status::NotFound, Json(response))
+    }
+}
+
+#[catch(404)]
+pub fn not_found_catcher() -> Json<ApiResponse<()>> {
+    Json(ApiResponse {
+        success: false,
+        data: None,
+        message: Some("Resource not found".to_string()),
+    })
+}
+
+#[catch(400)]
+pub fn bad_request_catcher() -> Json<ApiResponse<()>> {
+    Json(ApiResponse {
+        success: false,
+        data: None,
+        message: Some("Bad request".to_string()),
+    })
 }
 
 pub fn get_routes() -> Vec<Route> {
@@ -498,6 +539,7 @@ mod tests {
         rocket::build()
             .manage(controller)
             .mount("/payments", get_routes())
+            .register("/", catchers![not_found_catcher, bad_request_catcher])
     }
 
     #[test]
@@ -516,9 +558,12 @@ mod tests {
             .dispatch();
 
         assert_eq!(response.status(), Status::BadRequest);
-        let response_body: ApiResponse<()> = response.into_json().unwrap();
-        assert!(!response_body.success);
-        assert_eq!(response_body.message.unwrap(), "Metode pembayaran tidak valid");
+        if let Some(response_body) = response.into_json::<ApiResponse<()>>() {
+            assert!(!response_body.success);
+            assert_eq!(response_body.message.unwrap(), "Metode pembayaran tidak valid");
+        } else {
+            panic!("Response body is None");
+        }
     }
 
     #[test]
@@ -527,9 +572,12 @@ mod tests {
         let response = client.get("/payments/unknown_id").dispatch();
 
         assert_eq!(response.status(), Status::NotFound);
-        let response_body: ApiResponse<()> = response.into_json().unwrap();
-        assert!(!response_body.success);
-        assert_eq!(response_body.message.unwrap(), "Pembayaran dengan ID unknown_id tidak ditemukan");
+        if let Some(response_body) = response.into_json::<ApiResponse<()>>() {
+            assert!(!response_body.success);
+            assert_eq!(response_body.message.unwrap(), "Pembayaran dengan ID unknown_id tidak ditemukan");
+        } else {
+            panic!("Response body is None");
+        }
     }
 
     #[test]
@@ -538,9 +586,12 @@ mod tests {
         let response = client.delete("/payments/unknown_id").dispatch();
 
         assert_eq!(response.status(), Status::NotFound);
-        let response_body: ApiResponse<()> = response.into_json().unwrap();
-        assert!(!response_body.success);
-        assert_eq!(response_body.message.unwrap(), "Pembayaran dengan ID unknown_id tidak ditemukan");
+        if let Some(response_body) = response.into_json::<ApiResponse<()>>() {
+            assert!(!response_body.success);
+            assert_eq!(response_body.message.unwrap(), "Pembayaran dengan ID unknown_id tidak ditemukan");
+        } else {
+            panic!("Response body is None");
+        }
     }
 
     #[test]
@@ -559,8 +610,11 @@ mod tests {
             .dispatch();
 
         assert_eq!(response.status(), Status::BadRequest);
-        let response_body: ApiResponse<()> = response.into_json().unwrap();
-        assert!(!response_body.success);
-        assert_eq!(response_body.message.unwrap(), "Status pembayaran tidak valid");
+        if let Some(response_body) = response.into_json::<ApiResponse<()>>() {
+            assert!(!response_body.success);
+            assert_eq!(response_body.message.unwrap(), "Status pembayaran tidak valid");
+        } else {
+            panic!("Response body is None");
+        }
     }
 }
