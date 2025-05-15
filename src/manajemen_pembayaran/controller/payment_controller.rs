@@ -489,4 +489,78 @@ mod tests {
         assert!(response.data.is_some());
         assert_eq!(response.data.unwrap().len(), 1);
     }
+
+    use rocket::local::blocking::Client;
+    use rocket::http::{Status, ContentType};
+
+    fn setup_rocket() -> rocket::Rocket<rocket::Build> {
+        let controller = setup_controller();
+        rocket::build()
+            .manage(controller)
+            .mount("/payments", get_routes())
+    }
+
+    #[test]
+    fn test_create_payment_with_invalid_method() {
+        let client = Client::tracked(setup_rocket()).expect("valid rocket instance");
+        let request_body = serde_json::json!({
+            "transaction_id": "TRX-INVALID",
+            "amount": 1000.0,
+            "method": "INVALID_METHOD"
+        });
+
+        let response = client
+            .post("/payments/create")
+            .header(ContentType::JSON)
+            .body(request_body.to_string())
+            .dispatch();
+
+        assert_eq!(response.status(), Status::BadRequest);
+        let response_body: ApiResponse<()> = response.into_json().unwrap();
+        assert!(!response_body.success);
+        assert_eq!(response_body.message.unwrap(), "Metode pembayaran tidak valid");
+    }
+
+    #[test]
+    fn test_get_payment_not_found() {
+        let client = Client::tracked(setup_rocket()).expect("valid rocket instance");
+        let response = client.get("/payments/unknown_id").dispatch();
+
+        assert_eq!(response.status(), Status::NotFound);
+        let response_body: ApiResponse<()> = response.into_json().unwrap();
+        assert!(!response_body.success);
+        assert_eq!(response_body.message.unwrap(), "Pembayaran dengan ID unknown_id tidak ditemukan");
+    }
+
+    #[test]
+    fn test_delete_payment_not_found() {
+        let client = Client::tracked(setup_rocket()).expect("valid rocket instance");
+        let response = client.delete("/payments/unknown_id").dispatch();
+
+        assert_eq!(response.status(), Status::NotFound);
+        let response_body: ApiResponse<()> = response.into_json().unwrap();
+        assert!(!response_body.success);
+        assert_eq!(response_body.message.unwrap(), "Pembayaran dengan ID unknown_id tidak ditemukan");
+    }
+
+    #[test]
+    fn test_update_payment_status_invalid_status() {
+        let client = Client::tracked(setup_rocket()).expect("valid rocket instance");
+        let request_body = serde_json::json!({
+            "payment_id": "valid_id",
+            "new_status": "INVALID_STATUS",
+            "additional_amount": 500.0
+        });
+
+        let response = client
+            .put("/payments/update_status")
+            .header(ContentType::JSON)
+            .body(request_body.to_string())
+            .dispatch();
+
+        assert_eq!(response.status(), Status::BadRequest);
+        let response_body: ApiResponse<()> = response.into_json().unwrap();
+        assert!(!response_body.success);
+        assert_eq!(response_body.message.unwrap(), "Status pembayaran tidak valid");
+    }
 }
