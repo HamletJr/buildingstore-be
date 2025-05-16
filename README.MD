@@ -46,3 +46,9 @@ Mitigasi yang dilakukan kelompok kami adalah menerapkan arsitektur microservices
 
 #### Code Diagram
 <img src="image/transaksi_image_2.png">
+
+### Fathur (Manajemen Supplier)
+#### Component Diagram
+![Component Diagram for Manajemen Pelanggan](diagram/Fathur_ComponentDiagram.png)
+#### Code Diagram
+![Component Diagram for Manajamen Pelanggan](diagram/Fathur_CodeDiagram.png)
