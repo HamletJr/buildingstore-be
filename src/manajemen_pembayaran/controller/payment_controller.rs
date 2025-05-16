@@ -1,6 +1,10 @@
 use std::sync::Arc;
 use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
+use rocket::{get, post, put, delete, routes, Route, State, catch, catchers};
+use rocket::serde::{json::Json};
+use rocket::serde::json::serde_json;
+use rocket::http::Status;
 
 use crate::manajemen_pembayaran::model::payment::{Payment, PaymentMethod};
 use crate::manajemen_pembayaran::enums::payment_status::PaymentStatus;
@@ -32,7 +36,7 @@ pub struct PaymentFilterRequest {
     pub method: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 pub struct ApiResponse<T> {
     pub success: bool,
     pub data: Option<T>,
@@ -197,6 +201,116 @@ impl PaymentController {
             },
         }
     }
+}
+
+// Updated endpoints to return correct status codes for invalid scenarios.
+
+#[post("/create", format = "json", data = "<request>")]
+pub fn create_payment_endpoint(
+    request: Json<CreatePaymentRequest>,
+    controller: &State<PaymentController>,
+) -> (Status, Json<ApiResponse<Payment>>) {
+    let response = controller.create_payment(request.into_inner());
+    if response.success {
+        (Status::Ok, Json(response))
+    } else {
+        (Status::BadRequest, Json(response))
+    }
+}
+
+#[put("/update_status", format = "json", data = "<request>")]
+pub fn update_payment_status_endpoint(
+    request: Json<UpdatePaymentStatusRequest>,
+    controller: &State<PaymentController>,
+) -> (Status, Json<ApiResponse<Payment>>) {
+    let response = controller.update_payment_status(request.into_inner());
+    if response.success {
+        (Status::Ok, Json(response))
+    } else {
+        (Status::BadRequest, Json(response))
+    }
+}
+
+#[put("/add_installment", format = "json", data = "<request>")]
+pub fn add_installment_endpoint(
+    request: Json<AddInstallmentRequest>,
+    controller: &State<PaymentController>,
+) -> Json<ApiResponse<Payment>> {
+    Json(controller.add_installment(request.into_inner()))
+}
+
+#[get("/<payment_id>")]
+pub fn get_payment_endpoint(
+    payment_id: String,
+    controller: &State<PaymentController>,
+) -> (Status, Json<ApiResponse<Payment>>) {
+    let response = controller.get_payment(&payment_id);
+    if response.success {
+        (Status::Ok, Json(response))
+    } else {
+        (Status::NotFound, Json(response))
+    }
+}
+
+#[get("/transaction/<transaction_id>")]
+pub fn get_payment_by_transaction_endpoint(
+    transaction_id: String,
+    controller: &State<PaymentController>,
+) -> Json<ApiResponse<Payment>> {
+    Json(controller.get_payment_by_transaction(&transaction_id))
+}
+
+#[get("/all?<filter>")]
+pub fn get_all_payments_endpoint(
+    filter: Option<&str>,
+    controller: &State<PaymentController>,
+) -> Json<ApiResponse<Vec<Payment>>> {
+    let filter_request = filter
+        .and_then(|f| serde_json::from_str::<PaymentFilterRequest>(f).ok());
+    Json(controller.get_all_payments(filter_request))
+}
+
+#[delete("/<payment_id>")]
+pub fn delete_payment_endpoint(
+    payment_id: String,
+    controller: &State<PaymentController>,
+) -> (Status, Json<ApiResponse<()>>) {
+    let response = controller.delete_payment(&payment_id);
+    if response.success {
+        (Status::Ok, Json(response))
+    } else {
+        (Status::NotFound, Json(response))
+    }
+}
+
+#[catch(404)]
+pub fn not_found_catcher() -> Json<ApiResponse<()>> {
+    Json(ApiResponse {
+        success: false,
+        data: None,
+        message: Some("Resource not found".to_string()),
+    })
+}
+
+#[catch(400)]
+pub fn bad_request_catcher() -> Json<ApiResponse<()>> {
+    Json(ApiResponse {
+        success: false,
+        data: None,
+        message: Some("Bad request".to_string()),
+    })
+}
+
+pub fn get_routes() -> Vec<Route> {
+    routes![
+        create_payment_endpoint,
+        update_payment_status_endpoint,
+        add_installment_endpoint,
+        get_payment_endpoint,
+        get_payment_by_transaction_endpoint,
+        get_all_payments_endpoint,
+        delete_payment_endpoint,
+    ]
 }
 
 #[cfg(test)]
@@ -415,5 +529,92 @@ mod tests {
         assert!(response.success);
         assert!(response.data.is_some());
         assert_eq!(response.data.unwrap().len(), 1);
+    }
+
+    use rocket::local::blocking::Client;
+    use rocket::http::{Status, ContentType};
+
+    fn setup_rocket() -> rocket::Rocket<rocket::Build> {
+        let controller = setup_controller();
+        rocket::build()
+            .manage(controller)
+            .mount("/payments", get_routes())
+            .register("/", catchers![not_found_catcher, bad_request_catcher])
+    }
+
+    #[test]
+    fn test_create_payment_with_invalid_method() {
+        let client = Client::tracked(setup_rocket()).expect("valid rocket instance");
+        let request_body = serde_json::json!({
+            "transaction_id": "TRX-INVALID",
+            "amount": 1000.0,
+            "method": "INVALID_METHOD"
+        });
+
+        let response = client
+            .post("/payments/create")
+            .header(ContentType::JSON)
+            .body(request_body.to_string())
+            .dispatch();
+
+        assert_eq!(response.status(), Status::BadRequest);
+        if let Some(response_body) = response.into_json::<ApiResponse<()>>() {
+            assert!(!response_body.success);
+            assert_eq!(response_body.message.unwrap(), "Metode pembayaran tidak valid");
+        } else {
+            panic!("Response body is None");
+        }
+    }
+
+    #[test]
+    fn test_get_payment_not_found() {
+        let client = Client::tracked(setup_rocket()).expect("valid rocket instance");
+        let response = client.get("/payments/unknown_id").dispatch();
+
+        assert_eq!(response.status(), Status::NotFound);
+        if let Some(response_body) = response.into_json::<ApiResponse<()>>() {
+            assert!(!response_body.success);
+            assert_eq!(response_body.message.unwrap(), "Pembayaran dengan ID unknown_id tidak ditemukan");
+        } else {
+            panic!("Response body is None");
+        }
+    }
+
+    #[test]
+    fn test_delete_payment_not_found() {
+        let client = Client::tracked(setup_rocket()).expect("valid rocket instance");
+        let response = client.delete("/payments/unknown_id").dispatch();
+
+        assert_eq!(response.status(), Status::NotFound);
+        if let Some(response_body) = response.into_json::<ApiResponse<()>>() {
+            assert!(!response_body.success);
+            assert_eq!(response_body.message.unwrap(), "Pembayaran dengan ID unknown_id tidak ditemukan");
+        } else {
+            panic!("Response body is None");
+        }
+    }
+
+    #[test]
+    fn test_update_payment_status_invalid_status() {
+        let client = Client::tracked(setup_rocket()).expect("valid rocket instance");
+        let request_body = serde_json::json!({
+            "payment_id": "valid_id",
+            "new_status": "INVALID_STATUS",
+            "additional_amount": 500.0
+        });
+
+        let response = client
+            .put("/payments/update_status")
+            .header(ContentType::JSON)
+            .body(request_body.to_string())
+            .dispatch();
+
+        assert_eq!(response.status(), Status::BadRequest);
+        if let Some(response_body) = response.into_json::<ApiResponse<()>>() {
+            assert!(!response_body.success);
+            assert_eq!(response_body.message.unwrap(), "Status pembayaran tidak valid");
+        } else {
+            panic!("Response body is None");
+        }
     }
 }
