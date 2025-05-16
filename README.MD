@@ -32,6 +32,21 @@ Mitigasi yang dilakukan kelompok kami adalah menerapkan arsitektur microservices
 ![Component Diagram for Manajemen Pelanggan](diagram/Joshua_ComponentDiagram.png)
 #### Code Diagram
 ![Component Diagram for Manajamen Pelanggan](diagram/Joshua_CodeDiagram.png)
+
+
+### Scafi (Manajemen Pembayaran)
+#### Component Diagram
+![Component Diagram for Manajemen Pembayaran](diagram/Scafi_ComponentDiagram.png)
+#### Code Diagram
+![Component Diagram for Manajamen Pembayaran](diagram/Scafi_CodeDiagram.png)
+
+### Brenda (Transaksi Penjualan)
+#### Component Diagram
+<img src="image/transaksi_image_1.png">
+
+#### Code Diagram
+<img src="image/transaksi_image_2.png">
+
 ### Fathur (Manajemen Supplier)
 #### Component Diagram
 ![Component Diagram for Manajemen Pelanggan](diagram/Fathur_ComponentDiagram.png)
