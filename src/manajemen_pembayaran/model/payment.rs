@@ -1,7 +1,8 @@
 use chrono::{DateTime, Utc};
 use crate::manajemen_pembayaran::enums::payment_status::PaymentStatus;
+use serde::{Serialize, Deserialize};
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum PaymentMethod {
     Cash,
     CreditCard,
@@ -9,7 +10,7 @@ pub enum PaymentMethod {
     EWallet,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Payment {
     pub id: String,
     pub transaction_id: String,
@@ -21,7 +22,7 @@ pub struct Payment {
     pub due_date: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Installment {
     pub id: String,
     pub payment_id: String,
