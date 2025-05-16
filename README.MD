@@ -46,3 +46,9 @@ Mitigasi yang dilakukan kelompok kami adalah menerapkan arsitektur microservices
 
 #### Code Diagram
 <img src="image/transaksi_image_2.png">
+
+### Fachri (Manajemen Produk)
+#### Component Diagram
+![Component Diagram for Manajemen Produk](diagram/Fachri_ComponentDiagram.png)
+#### Code Diagram
+![Code Diagram for Manajemen Produk](diagram/Fachri_CodeDiagram.png)
