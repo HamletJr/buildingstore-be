@@ -3,14 +3,24 @@ use rocket::State;
 use rocket::http::Status;
 use rocket::serde::json::Json;
 use sqlx::{Any, Pool};
+use rocket::serde::{Serialize, Deserialize};
 
-use crate::manajemen_pelanggan::model::pelanggan::Pelanggan;
+use crate::manajemen_pelanggan::model::pelanggan::{Pelanggan, PelangganForm};
 use crate::manajemen_pelanggan::service::pelanggan::PelangganService;
 
+#[derive(Serialize, Deserialize)]
+#[serde(crate = "rocket::serde")]
+pub struct Response {
+    message: String,
+}
+
 #[get("/pelanggan?<sort>&<filter>&<keyword>")]
-pub async fn get_all_pelanggan(db: &State<Pool<Any>>, sort: Option<String>, filter: Option<String>, keyword: Option<String>) -> Result<Json<Vec<Pelanggan>>, Status> {
-    let pelanggan = PelangganService::get_all_pelanggan(db.inner().clone()).await.map_err(|_| Status::InternalServerError)?;
-    let mut pelanggan = pelanggan.clone();
+pub async fn get_all_pelanggan(db: &State<Pool<Any>>, sort: Option<String>, filter: Option<String>, keyword: Option<String>) -> Result<Json<Vec<Pelanggan>>, (Status, Json<Response>)> {
+    let pelanggan = PelangganService::get_all_pelanggan(db.inner().clone()).await;
+    if pelanggan.is_err() {
+        return Err((Status::InternalServerError, Json(Response { message: "Failed to fetch pelanggan".to_string() })));
+    }
+    let mut pelanggan = pelanggan.unwrap().clone();
     if let Some(sort_strategy) = &sort {
         pelanggan = PelangganService::sort_pelanggan(pelanggan, sort_strategy);
     }
@@ -23,9 +33,13 @@ pub async fn get_all_pelanggan(db: &State<Pool<Any>>, sort: Option<String>, filt
 }
 
 #[post("/pelanggan", data = "<pelanggan>")]
-pub async fn create_pelanggan(db: &State<Pool<Any>>, pelanggan: Json<Pelanggan>) -> Result<Json<Pelanggan>, Status> {
-    let new_pelanggan = PelangganService::create_pelanggan(db.inner().clone(), &pelanggan).await.map_err(|_| Status::InternalServerError)?;
-    Ok(Json(new_pelanggan))
+pub async fn create_pelanggan(db: &State<Pool<Any>>, pelanggan: Json<PelangganForm>) -> Result<Json<Response>, (Status, Json<Response>)> {
+    let pelanggan = Pelanggan::new(pelanggan.nama.clone(), pelanggan.alamat.clone(), pelanggan.no_telp.clone());
+    let res = PelangganService::create_pelanggan(db.inner().clone(), &pelanggan).await;
+    if res.is_err() {
+        return Err((Status::InternalServerError, Json(Response { message: "Failed to create pelanggan".to_string() })));
+    }
+    Ok(Json(Response { message: "Pelanggan created successfully".to_string() }))
 }
 
 #[get("/pelanggan/<id>")]
@@ -35,18 +49,24 @@ pub async fn get_pelanggan_by_id(db: &State<Pool<Any>>, id: i32) -> Result<Json<
 }
 
 #[patch("/pelanggan/<id>", data = "<pelanggan>")]
-pub async fn update_pelanggan(db: &State<Pool<Any>>, id: i32, pelanggan: Json<Pelanggan>) -> Result<Json<Pelanggan>, Status> {
+pub async fn update_pelanggan(db: &State<Pool<Any>>, id: i32, pelanggan: Json<Pelanggan>) -> (Status, Json<Response>) {
     if pelanggan.id != id {
-        return Err(Status::BadRequest);
+        return (Status::BadRequest, Json(Response { message: "Invalid data".to_string() }));
     }
-    let updated_pelanggan = PelangganService::update_pelanggan(db.inner().clone(), &pelanggan).await.map_err(|_| Status::InternalServerError)?;
-    Ok(Json(updated_pelanggan))
+    let res = PelangganService::update_pelanggan(db.inner().clone(), &pelanggan).await;
+    match res {
+        Ok(_) => (Status::Ok, Json(Response { message: "Pelanggan updated successfully".to_string() })),
+        Err(_) => (Status::InternalServerError, Json(Response { message: "Try again later".to_string() }))
+    }
 }
 
 #[delete("/pelanggan/<id>")]
-pub async fn delete_pelanggan(db: &State<Pool<Any>>, id: i32) -> Result<Status, Status> {
-    PelangganService::delete_pelanggan(db.inner().clone(), id).await.map_err(|_| Status::InternalServerError)?;
-    Ok(Status::NoContent)
+pub async fn delete_pelanggan(db: &State<Pool<Any>>, id: i32) -> (Status, Json<Response>) {
+    let res = PelangganService::delete_pelanggan(db.inner().clone(), id).await;
+    if res.is_err() {
+        return (Status::InternalServerError, Json(Response { message: "Failed to delete pelanggan".to_string() }));
+    }
+    (Status::Ok, Json(Response { message: "Pelanggan deleted successfully".to_string() }))
 }
 
 #[cfg(test)]
