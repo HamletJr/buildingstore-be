@@ -72,7 +72,15 @@ impl UserRepository {
     }
 
     pub async fn update_password(mut db: PoolConnection<Any>, user_id: i64, new_password: &str) -> Result<(), sqlx::Error> {
-        todo!()
+        let hashed_password = bcrypt::hash(new_password, bcrypt::DEFAULT_COST).expect("Failed to hash password");
+        sqlx::query(
+            "UPDATE users SET password = $1 WHERE id = $2")
+            .bind(hashed_password)
+            .bind(user_id)
+            .execute(&mut *db)
+            .await?;
+
+        Ok(())
     }
 }
 
