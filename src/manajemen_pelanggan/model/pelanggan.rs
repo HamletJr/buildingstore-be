@@ -16,6 +16,14 @@ pub struct Pelanggan {
     pub tanggal_gabung: NaiveDate,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(crate = "rocket::serde")]
+pub struct PelangganForm {
+    pub nama: String,
+    pub alamat: String,
+    pub no_telp: String,
+}
+
 impl Pelanggan {
     /// Creates a new instance of `Pelanggan`. Automatically initializes the `id` to 0 
     /// and sets the `tanggal_gabung` to the current date. Use the default constructor
