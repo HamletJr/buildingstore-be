@@ -70,6 +70,10 @@ impl UserRepository {
             is_admin,
         })
     }
+
+    pub async fn update_password(mut db: PoolConnection<Any>, user_id: i64, new_password: &str) -> Result<(), sqlx::Error> {
+        todo!()
+    }
 }
 
 #[cfg(test)]
@@ -145,5 +149,18 @@ mod test {
         let db = setup().await;
         let result = UserRepository::get_user_by_id(db.acquire().await.unwrap(), 999).await;
         assert!(result.is_err());
+    }
+
+    #[async_test]
+    async fn test_update_password() {
+        let db = setup().await;
+        let user = User::new("test_user".to_string(), "password".to_string(), false);
+
+        let created_user = UserRepository::create_user(db.acquire().await.unwrap(), user.clone()).await.unwrap();
+        let result = UserRepository::update_password(db.acquire().await.unwrap(), created_user.id, "new_password").await;
+        assert!(result.is_ok());
+
+        let updated_user = UserRepository::get_user_by_id(db.acquire().await.unwrap(), created_user.id).await.unwrap();
+        assert!(updated_user.verify_password("new_password"));
     }
 }
