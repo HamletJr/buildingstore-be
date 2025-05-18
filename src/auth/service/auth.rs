@@ -37,6 +37,10 @@ impl AuthService {
         SessionRepository::delete_session(db.acquire().await.unwrap(), session_key).await?;
         Ok(())
     }
+
+    pub async fn update_user_password(db: Pool<Any>, user_id: i64, new_password: String) -> Result<(), sqlx::Error> {
+        todo!();
+    }
 }
 
 #[cfg(test)]
@@ -128,5 +132,21 @@ mod test {
         let session = AuthService::login_user(db.clone(), username.clone(), password.clone()).await.unwrap();
         let result = AuthService::logout_user(db.clone(), Uuid::try_parse(&session.session_key).unwrap()).await;
         assert!(result.is_ok());
+    }
+
+    #[async_test]
+    async fn test_update_user_password() {
+        let db = setup().await;
+        let username = "test_user".to_string();
+        let password = "password".to_string();
+        let user = User::new(username.clone(), password.clone(), false);
+
+        AuthService::register_user(db.clone(), user.clone()).await.unwrap();
+        let user = UserRepository::get_user_by_username(db.acquire().await.unwrap(), &username).await.unwrap();
+        assert!(user.verify_password(&password));
+        let result = AuthService::update_user_password(db.clone(), user.id, "newpassword".to_string()).await;
+        assert!(result.is_ok());
+        let updated_user = UserRepository::get_user_by_id(db.acquire().await.unwrap(), user.id).await.unwrap();
+        assert!(updated_user.verify_password("newpassword"));
     }
 }
