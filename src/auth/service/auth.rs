@@ -39,7 +39,8 @@ impl AuthService {
     }
 
     pub async fn update_user_password(db: Pool<Any>, user_id: i64, new_password: String) -> Result<(), sqlx::Error> {
-        todo!();
+        UserRepository::update_password(db.acquire().await.unwrap(), user_id, &new_password).await?;
+        Ok(())
     }
 }
 
