@@ -1,17 +1,27 @@
 use chrono::{ Utc, NaiveDate };
+use rocket::serde::{Serialize, Deserialize};
 
 /// Struct representing a customer (Pelanggan) in the system.
 /// Contains fields for ID, name, address, phone number, and join date.
 /// 
 /// The `new` method can be used to create a new `Pelanggan` with only the necessary fields.
 /// ID and join date will be automatically initialized.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(crate = "rocket::serde")]
 pub struct Pelanggan {
     pub id: i32,
     pub nama: String,
     pub alamat: String,
     pub no_telp: String,
     pub tanggal_gabung: NaiveDate,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(crate = "rocket::serde")]
+pub struct PelangganForm {
+    pub nama: String,
+    pub alamat: String,
+    pub no_telp: String,
 }
 
 impl Pelanggan {

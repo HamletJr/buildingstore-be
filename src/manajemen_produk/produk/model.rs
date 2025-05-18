@@ -1,5 +1,6 @@
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Produk {
+    pub id: Option<i64>,
     pub nama: String,
     pub kategori: String,
     pub harga: f64,
@@ -7,8 +8,70 @@ pub struct Produk {
     pub deskripsi: Option<String>,
 }
 
+// Builder pattern implementation
+pub struct ProdukBuilder {
+    id: Option<i64>,
+    nama: String,
+    kategori: String,
+    harga: f64,
+    stok: u32,
+    deskripsi: Option<String>,
+}
+
+impl ProdukBuilder {
+    pub fn new(nama: String, kategori: String) -> Self {
+        Self {
+            id: None,
+            nama,
+            kategori,
+            harga: 0.0,
+            stok: 0,
+            deskripsi: None,
+        }
+    }
+    
+    pub fn id(mut self, id: i64) -> Self {
+        self.id = Some(id);
+        self
+    }
+    
+    pub fn harga(mut self, harga: f64) -> Self {
+        self.harga = harga;
+        self
+    }
+    
+    pub fn stok(mut self, stok: u32) -> Self {
+        self.stok = stok;
+        self
+    }
+    
+    pub fn deskripsi(mut self, deskripsi: String) -> Self {
+        self.deskripsi = Some(deskripsi);
+        self
+    }
+    
+    pub fn build(self) -> Result<Produk, Vec<String>> {
+        let produk = Produk {
+            id: self.id,
+            nama: self.nama,
+            kategori: self.kategori,
+            harga: self.harga,
+            stok: self.stok,
+            deskripsi: self.deskripsi,
+        };
+        
+        // Validate the product before returning it
+        match produk.validate() {
+            Ok(_) => Ok(produk),
+            Err(errors) => Err(errors),
+        }
+    }
+}
+
 impl Produk {
-    pub fn new(
+    // Constructor with ID - for database retrieval
+    pub fn with_id(
+        id: i64,
         nama: String,
         kategori: String,
         harga: f64,
@@ -16,6 +79,7 @@ impl Produk {
         deskripsi: Option<String>,
     ) -> Self {
         Self {
+            id: Some(id),
             nama,
             kategori,
             harga,
@@ -24,53 +88,29 @@ impl Produk {
         }
     }
     
-    pub fn validate(&self) -> Result<(), &'static str> {
-        if self.nama.trim().is_empty() {
-            return Err("Nama produk tidak boleh kosong");
-        }
-        
-        if self.kategori.trim().is_empty() {
-            return Err("Kategori produk tidak boleh kosong");
-        }
-        
-        if self.harga < 0.0 {
-            return Err("Harga produk tidak boleh negatif");
-        }
-        
-        Ok(())
-    }
-    
-    pub fn create_with_validation(
+    // Regular constructor
+    pub fn new(
         nama: String,
         kategori: String,
         harga: f64,
         stok: u32,
         deskripsi: Option<String>,
-    ) -> Result<Self, &'static str> {
-        let produk = Self::new(nama, kategori, harga, stok, deskripsi);
-        produk.validate()?;
-        Ok(produk)
-    }
-}
-
-pub fn validate_produk(
-    nama: String,
-    kategori: String,
-    harga: f64,
-    _stok: u32,
-    _deskripsi: Option<String>,
-) -> Result<(), &'static str> {
-    if nama.trim().is_empty() {
-        return Err("Nama produk tidak boleh kosong");
+    ) -> Self {
+        Self {
+            id: None,
+            nama,
+            kategori,
+            harga,
+            stok,
+            deskripsi,
+        }
     }
     
-    if kategori.trim().is_empty() {
-        return Err("Kategori produk tidak boleh kosong");
+    // Comprehensive validation method using the ProdukValidator
+    pub fn validate(&self) -> Result<(), Vec<String>> {
+        use crate::manajemen_produk::produk::validation::ProdukValidator;
+        
+        let validator = ProdukValidator::default();
+        validator.validate(self)
     }
-    
-    if harga < 0.0 {
-        return Err("Harga produk tidak boleh negatif");
-    }
-    
-    Ok(())
 }
