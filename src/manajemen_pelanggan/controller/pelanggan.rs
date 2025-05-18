@@ -102,24 +102,34 @@ mod tests {
     async fn test_create_pelanggan() {
         let rocket = setup().await;
         let client = Client::tracked(rocket).await.expect("Must provide a valid Rocket instance");
-        let new_pelanggan = Pelanggan::new("Castorice".to_string(), "Styxia".to_string(), "08123456789".to_string());
+        let new_pelanggan = PelangganForm { 
+            nama: "Castorice".to_string(), 
+            alamat: "Styxia".to_string(), 
+            no_telp: "08123456789".to_string() 
+        };
         let response = client.post(uri!(super::create_pelanggan))
             .json(&new_pelanggan)
             .dispatch()
             .await;
         assert_eq!(response.status(), Status::Ok);
-        let body = response.into_json::<Pelanggan>().await.unwrap();
-        assert_eq!(body.nama, new_pelanggan.nama);
-        assert_eq!(body.alamat, new_pelanggan.alamat);
+        let body = response.into_json::<Response>().await.unwrap();
+        assert_eq!(body.message, "Pelanggan created successfully");
     }
-
 
     #[async_test]
     async fn test_get_all_pelanggan() {
         let rocket = setup().await;
         let client = Client::tracked(rocket).await.expect("Must provice a valid Rocket instance");
-        let new_pelanggan = Pelanggan::new("Castorice".to_string(), "Styxia".to_string(), "08123456789".to_string());
-        let new_pelanggan_2 = Pelanggan::new("Tribbie".to_string(), "Okhema".to_string(), "1234567890".to_string());
+        let new_pelanggan = PelangganForm { 
+            nama: "Castorice".to_string(), 
+            alamat: "Styxia".to_string(), 
+            no_telp: "08123456789".to_string()
+        };
+        let new_pelanggan_2 = PelangganForm { 
+            nama: "Tribbie".to_string(), 
+            alamat: "Okhema".to_string(), 
+            no_telp: "1234567890".to_string()
+        };
 
         client.post(uri!(super::create_pelanggan))
             .json(&new_pelanggan)
@@ -141,14 +151,17 @@ mod tests {
     async fn test_get_pelanggan_by_id() {
         let rocket = setup().await;
         let client = Client::tracked(rocket).await.expect("Must provice a valid Rocket instance");
-        let new_pelanggan = Pelanggan::new("Castorice".to_string(), "Styxia".to_string(), "08123456789".to_string());
+        let new_pelanggan = PelangganForm { 
+            nama: "Castorice".to_string(), 
+            alamat: "Styxia".to_string(), 
+            no_telp: "08123456789".to_string()
+        };
         let response = client.post(uri!(super::create_pelanggan))
             .json(&new_pelanggan)
             .dispatch()
             .await;
         assert_eq!(response.status(), Status::Ok);
-        let body = response.into_json::<Pelanggan>().await.unwrap();
-        let response = client.get(uri!(super::get_pelanggan_by_id(body.id)))
+        let response = client.get(uri!(super::get_pelanggan_by_id(1)))
             .dispatch()
             .await;
         assert_eq!(response.status(), Status::Ok);
@@ -160,12 +173,19 @@ mod tests {
     async fn test_update_pelanggan() {
         let rocket = setup().await;
         let client = Client::tracked(rocket).await.expect("Must provice a valid Rocket instance");
-        let new_pelanggan = Pelanggan::new("Castorice".to_string(), "Styxia".to_string(), "08123456789".to_string());
+        let new_pelanggan = PelangganForm { 
+            nama: "Castorice".to_string(), 
+            alamat: "Styxia".to_string(), 
+            no_telp: "08123456789".to_string()
+        };
         let response = client.post(uri!(super::create_pelanggan))
             .json(&new_pelanggan)
             .dispatch()
             .await;
         assert_eq!(response.status(), Status::Ok);
+        let response = client.get(uri!(super::get_pelanggan_by_id(1)))
+            .dispatch()
+            .await;
         let body = response.into_json::<Pelanggan>().await.unwrap();
         let updated_pelanggan = Pelanggan {
             id: body.id,
@@ -179,25 +199,28 @@ mod tests {
             .dispatch()
             .await;
         assert_eq!(response.status(), Status::Ok);
-        let body = response.into_json::<Pelanggan>().await.unwrap();
-        assert_eq!(body.nama, updated_pelanggan.nama);
+        let body = response.into_json::<Response>().await.unwrap();
+        assert_eq!(body.message, "Pelanggan updated successfully");
     }
 
     #[async_test]
     async fn test_delete_pelanggan() {
         let rocket = setup().await;
         let client = Client::tracked(rocket).await.expect("Must provice a valid Rocket instance");
-        let new_pelanggan = Pelanggan::new("Castorice".to_string(), "Styxia".to_string(), "08123456789".to_string());
+        let new_pelanggan = PelangganForm { 
+            nama: "Castorice".to_string(), 
+            alamat: "Styxia".to_string(), 
+            no_telp: "08123456789".to_string()
+        };
         let response = client.post(uri!(super::create_pelanggan))
             .json(&new_pelanggan)
             .dispatch()
             .await;
         assert_eq!(response.status(), Status::Ok);
-        let body = response.into_json::<Pelanggan>().await.unwrap();
-        let response = client.delete(uri!(super::delete_pelanggan(body.id)))
+        let response = client.delete(uri!(super::delete_pelanggan(1)))
             .dispatch()
             .await;
-        assert_eq!(response.status(), Status::NoContent);
+        assert_eq!(response.status(), Status::Ok);
     }
 
     #[async_test]
@@ -214,9 +237,21 @@ mod tests {
     async fn test_get_all_pelanggan_sort() {
         let rocket = setup().await;
         let client = Client::tracked(rocket).await.expect("Must provice a valid Rocket instance");
-        let new_pelanggan = Pelanggan::new("Castorice".to_string(), "Styxia".to_string(), "08123456789".to_string());
-        let new_pelanggan_2 = Pelanggan::new("Tribbie".to_string(), "Okhema".to_string(), "1234567890".to_string());
-        let new_pelanggan_3 = Pelanggan::new("Aglaea".to_string(), "Okhema".to_string(), "5432198760".to_string());
+        let new_pelanggan = PelangganForm { 
+            nama: "Castorice".to_string(), 
+            alamat: "Styxia".to_string(), 
+            no_telp: "08123456789".to_string()
+        };
+        let new_pelanggan_2 = PelangganForm { 
+            nama: "Tribbie".to_string(), 
+            alamat: "Okhema".to_string(), 
+            no_telp: "1234567890".to_string()
+        };
+        let new_pelanggan_3 = PelangganForm { 
+            nama: "Aglaea".to_string(), 
+            alamat: "Okhema".to_string(), 
+            no_telp: "5432198760".to_string()
+        };
 
         client.post(uri!(super::create_pelanggan))
             .json(&new_pelanggan)
@@ -244,9 +279,21 @@ mod tests {
     async fn test_get_all_pelanggan_filter() {
         let rocket = setup().await;
         let client = Client::tracked(rocket).await.expect("Must provice a valid Rocket instance");
-        let new_pelanggan = Pelanggan::new("Castorice".to_string(), "Styxia".to_string(), "08123456789".to_string());
-        let new_pelanggan_2 = Pelanggan::new("Tribbie".to_string(), "Okhema".to_string(), "1234567890".to_string());
-        let new_pelanggan_3 = Pelanggan::new("Aglaea".to_string(), "Okhema".to_string(), "5432198760".to_string());
+        let new_pelanggan = PelangganForm { 
+            nama: "Castorice".to_string(), 
+            alamat: "Styxia".to_string(), 
+            no_telp: "08123456789".to_string()
+        };
+        let new_pelanggan_2 = PelangganForm { 
+            nama: "Tribbie".to_string(), 
+            alamat: "Okhema".to_string(), 
+            no_telp: "1234567890".to_string()
+        };
+        let new_pelanggan_3 = PelangganForm { 
+            nama: "Aglaea".to_string(), 
+            alamat: "Okhema".to_string(), 
+            no_telp: "5432198760".to_string()
+        };
 
         client.post(uri!(super::create_pelanggan))
             .json(&new_pelanggan)
@@ -272,9 +319,21 @@ mod tests {
     async fn test_get_all_pelanggan_sort_and_filter() {
         let rocket = setup().await;
         let client = Client::tracked(rocket).await.expect("Must provice a valid Rocket instance");
-        let new_pelanggan = Pelanggan::new("Castorice".to_string(), "Styxia".to_string(), "08123456789".to_string());
-        let new_pelanggan_2 = Pelanggan::new("Tribbie".to_string(), "Okhema".to_string(), "1234567890".to_string());
-        let new_pelanggan_3 = Pelanggan::new("Aglaea".to_string(), "Okhema".to_string(), "5432198760".to_string());
+        let new_pelanggan = PelangganForm { 
+            nama: "Castorice".to_string(), 
+            alamat: "Styxia".to_string(), 
+            no_telp: "08123456789".to_string()
+        };
+        let new_pelanggan_2 = PelangganForm { 
+            nama: "Tribbie".to_string(), 
+            alamat: "Okhema".to_string(), 
+            no_telp: "1234567890".to_string()
+        };
+        let new_pelanggan_3 = PelangganForm { 
+            nama: "Aglaea".to_string(), 
+            alamat: "Okhema".to_string(), 
+            no_telp: "5432198760".to_string()
+        };
 
         client.post(uri!(super::create_pelanggan))
             .json(&new_pelanggan)
