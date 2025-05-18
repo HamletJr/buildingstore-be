@@ -32,7 +32,7 @@ pub struct ChangePasswordForm {
 
 #[get("/user")]
 pub async fn get_user(user: AuthenticatedUser) -> Json<AuthenticatedUser> {
-    todo!()
+    Json(user)
 }
 
 #[post("/login", data = "<form>")]
@@ -82,7 +82,13 @@ pub async fn logout(db: &State<Pool<Any>>, cookies: &CookieJar<'_>) -> Status {
 
 #[patch("/change_password", data = "<form>")]
 pub async fn change_password(user: AuthenticatedUser, form: Json<ChangePasswordForm>, db: &State<Pool<Any>>) -> Status {
-    todo!()
+    let new_password = form.new_password.clone();
+
+    let result = AuthService::update_user_password(db.inner().clone(), user.user_id, new_password).await;
+    match result {
+        Ok(_) => Status::Ok,
+        Err(_) => Status::Unauthorized
+    }
 }
 
 #[cfg(test)]
