@@ -24,6 +24,17 @@ pub struct RegisterForm {
     pub is_admin: bool,
 }
 
+#[derive(Serialize, Deserialize)]
+#[serde(crate = "rocket::serde")]
+pub struct ChangePasswordForm {
+    pub new_password: String,
+}
+
+#[get("/user")]
+pub async fn get_user(user: AuthenticatedUser) -> Json<AuthenticatedUser> {
+    todo!()
+}
+
 #[post("/login", data = "<form>")]
 pub async fn login(form: Json<AuthForm>, cookies: &CookieJar<'_>, db: &State<Pool<Any>>) -> Status {
     let username = form.username.clone();
@@ -67,6 +78,11 @@ pub async fn logout(db: &State<Pool<Any>>, cookies: &CookieJar<'_>) -> Status {
     AuthService::logout_user(db.inner().clone(), Uuid::try_parse(&session_key).unwrap()).await.unwrap();
     cookies.remove_private(Cookie::build("session_key"));
     Status::Ok
+}
+
+#[patch("/change_password", data = "<form>")]
+pub async fn change_password(user: AuthenticatedUser, form: Json<ChangePasswordForm>, db: &State<Pool<Any>>) -> Status {
+    todo!()
 }
 
 #[cfg(test)]
@@ -130,6 +146,31 @@ mod test {
         assert_eq!(response.status(), Status::Unauthorized);
         let cookies = response.cookies();
         assert!(cookies.get("session_key").is_none(), "Session cookie should not be set");
+    }
+
+    #[async_test]
+    async fn test_get_user() {
+        let rocket = setup().await;
+        let client = Client::tracked(rocket).await.expect("Must provice a valid Rocket instance");
+        client.post(uri!(super::login))
+            .header(rocket::http::ContentType::JSON)
+            .body(format!(r#"{{"username":"{}","password":"{}"}}"#, ADMIN_USERNAME, ADMIN_PASSWORD))
+            .dispatch()
+            .await;
+        let response = client.get(uri!(super::get_user))
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::Ok);
+    }
+
+    #[async_test]
+    async fn test_get_user_unauthorized() {
+        let rocket = setup().await;
+        let client = Client::tracked(rocket).await.expect("Must provice a valid Rocket instance");
+        let response = client.get(uri!(super::get_user))
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::Unauthorized);
     }
 
     #[async_test]
@@ -199,5 +240,22 @@ mod test {
         let cookies = response.cookies();
         let session_key = cookies.get("session_key").map(|c| c.value()).unwrap_or_default();
         assert!(session_key.is_empty(), "Session cookie should be cleared");
+    }
+
+    #[async_test]
+    async fn test_change_password() {
+        let rocket = setup().await;
+        let client = Client::tracked(rocket).await.expect("Must provice a valid Rocket instance");
+        client.post(uri!(super::login))
+            .header(rocket::http::ContentType::JSON)
+            .body(format!(r#"{{"username":"{}","password":"{}"}}"#, ADMIN_USERNAME, ADMIN_PASSWORD))
+            .dispatch()
+            .await;
+        let response = client.patch(uri!(super::change_password))
+            .header(rocket::http::ContentType::JSON)
+            .body(format!(r#"{{"new_password":"newpassword"}}"#))
+            .dispatch()
+            .await;
+        assert_eq!(response.status(), Status::Ok);
     }
 }
