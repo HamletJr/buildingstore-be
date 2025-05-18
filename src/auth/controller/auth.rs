@@ -1,6 +1,7 @@
-use rocket::{get, post, State};
-use rocket::form::{Form, FromForm};
-use rocket::http::{Status, Cookie, CookieJar};
+use rocket::serde::json::Json;
+use rocket::{get, post, patch, State};
+use rocket::http::{Cookie, CookieJar, SameSite, Status};
+use rocket::serde::{Deserialize, Serialize};
 use sqlx::{Any, Pool};
 use uuid::Uuid;
 
@@ -8,13 +9,15 @@ use crate::auth::model::user::User;
 use crate::auth::service::auth::AuthService;
 use crate::auth::guards::auth::AuthenticatedUser;
 
-#[derive(FromForm)]
-pub struct LoginForm {
+#[derive(Serialize, Deserialize)]
+#[serde(crate = "rocket::serde")]
+pub struct AuthForm {
     pub username: String,
     pub password: String,
 }
 
-#[derive(FromForm)]
+#[derive(Serialize, Deserialize)]
+#[serde(crate = "rocket::serde")]
 pub struct RegisterForm {
     pub username: String,
     pub password: String,
@@ -22,14 +25,16 @@ pub struct RegisterForm {
 }
 
 #[post("/login", data = "<form>")]
-pub async fn login(form: Form<LoginForm>, cookies: &CookieJar<'_>, db: &State<Pool<Any>>) -> Status {
+pub async fn login(form: Json<AuthForm>, cookies: &CookieJar<'_>, db: &State<Pool<Any>>) -> Status {
     let username = form.username.clone();
     let password = form.password.clone();
 
     let result = AuthService::login_user(db.inner().clone(), username, password).await;
     match result {
         Ok(session) => {
-            cookies.add_private(Cookie::new("session_key", session.session_key));
+            let mut cookie = Cookie::new("session_key", session.session_key);
+            cookie.set_same_site(SameSite::None);
+            cookies.add_private(cookie);
             Status::Ok
         },
         Err(_) => Status::Unauthorized,
@@ -37,9 +42,9 @@ pub async fn login(form: Form<LoginForm>, cookies: &CookieJar<'_>, db: &State<Po
 }
 
 #[post("/register", data = "<form>")]
-pub async fn register(user: AuthenticatedUser, form: Form<RegisterForm>, db: &State<Pool<Any>>) -> Status {
+pub async fn register(user: AuthenticatedUser, form: Json<RegisterForm>, db: &State<Pool<Any>>) -> Status {
     if !user.is_admin {
-        return Status::Forbidden;
+        return Status::Unauthorized;
     }
     let username = form.username.clone();
     let password = form.password.clone();
@@ -94,7 +99,7 @@ mod test {
         let rocket = rocket::build()
             .manage(reqwest::Client::builder().build().unwrap())
             .manage(db.clone())
-            .mount("/", routes![login, register, logout]);
+            .mount("/", routes![login, register, logout, change_password, get_user]);
 
         rocket
     }
@@ -104,8 +109,8 @@ mod test {
         let rocket = setup().await;
         let client = Client::tracked(rocket).await.expect("Must provice a valid Rocket instance");
         let response = client.post(uri!(super::login))
-            .header(rocket::http::ContentType::Form)
-            .body(format!("username={}&password={}", ADMIN_USERNAME, ADMIN_PASSWORD))
+            .header(rocket::http::ContentType::JSON)
+            .body(format!(r#"{{"username":"{}","password":"{}"}}"#, ADMIN_USERNAME, ADMIN_PASSWORD))
             .dispatch()
             .await;
         assert_eq!(response.status(), Status::Ok);
@@ -118,8 +123,8 @@ mod test {
         let rocket = setup().await;
         let client = Client::tracked(rocket).await.expect("Must provice a valid Rocket instance");
         let response = client.post(uri!(super::login))
-            .header(rocket::http::ContentType::Form)
-            .body("username=invaliduser&password=invalidpass")
+            .header(rocket::http::ContentType::JSON)
+            .body(format!(r#"{{"username":"invaliduser","password":"invalidpass"}}"#))
             .dispatch()
             .await;
         assert_eq!(response.status(), Status::Unauthorized);
@@ -132,13 +137,13 @@ mod test {
         let rocket = setup().await;
         let client = Client::tracked(rocket).await.expect("Must provice a valid Rocket instance");
         client.post(uri!(super::login))
-            .header(rocket::http::ContentType::Form)
-            .body(format!("username={}&password={}", ADMIN_USERNAME, ADMIN_PASSWORD))
+            .header(rocket::http::ContentType::JSON)
+            .body(format!(r#"{{"username":"{}","password":"{}"}}"#, ADMIN_USERNAME, ADMIN_PASSWORD))
             .dispatch()
             .await;
         let response = client.post(uri!(super::register))
-            .header(rocket::http::ContentType::Form)
-            .body("username=testuser&password=testpass&is_admin=false")
+            .header(rocket::http::ContentType::JSON)
+            .body(format!(r#"{{"username":"test","password":"testuser","is_admin":false}}"#))
             .dispatch()
             .await;
         assert_eq!(response.status(), Status::Ok);
@@ -149,18 +154,18 @@ mod test {
         let rocket = setup().await;
         let client = Client::tracked(rocket).await.expect("Must provice a valid Rocket instance");
         client.post(uri!(super::login))
-            .header(rocket::http::ContentType::Form)
-            .body(format!("username={}&password={}", ADMIN_USERNAME, ADMIN_PASSWORD))
+            .header(rocket::http::ContentType::JSON)
+            .body(format!(r#"{{"username":"{}","password":"{}"}}"#, ADMIN_USERNAME, ADMIN_PASSWORD))
             .dispatch()
             .await;
         client.post(uri!(super::register))
-            .header(rocket::http::ContentType::Form)
-            .body("username=testuser&password=testpass")
+            .header(rocket::http::ContentType::JSON)
+            .body(format!(r#"{{"username":"testuser","password":"testpass","is_admin":false}}"#))
             .dispatch()
             .await;
         let response = client.post(uri!(super::register))
-            .header(rocket::http::ContentType::Form)
-            .body("username=testuser&password=testpass")
+            .header(rocket::http::ContentType::JSON)
+            .body(format!(r#"{{"username":"testuser","password":"testpass","is_admin":false}}"#))
             .dispatch()
             .await;
         assert_eq!(response.status(), Status::BadRequest);
@@ -171,8 +176,8 @@ mod test {
         let rocket = setup().await;
         let client = Client::tracked(rocket).await.expect("Must provice a valid Rocket instance");
         let response = client.post(uri!(super::register))
-            .header(rocket::http::ContentType::Form)
-            .body("username=testuser&password=testpass&is_admin=false")
+            .header(rocket::http::ContentType::JSON)
+            .body(format!(r#"{{"username":"testuser","password":"testpass","is_admin":false}}"#))
             .dispatch()
             .await;
         assert_eq!(response.status(), Status::Unauthorized);
@@ -183,8 +188,8 @@ mod test {
         let rocket = setup().await;
         let client = Client::tracked(rocket).await.expect("Must provice a valid Rocket instance");
         client.post(uri!(super::login))
-            .header(rocket::http::ContentType::Form)
-            .body(format!("username={}&password={}", ADMIN_USERNAME, ADMIN_PASSWORD))
+            .header(rocket::http::ContentType::JSON)
+            .body(format!(r#"{{"username":"{}","password":"{}"}}"#, ADMIN_USERNAME, ADMIN_PASSWORD))
             .dispatch()
             .await;
         let response = client.get(uri!(super::logout))
