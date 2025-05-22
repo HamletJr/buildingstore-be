@@ -10,6 +10,7 @@ use sqlx::{Any, Pool};
 pub mod auth;
 pub mod manajemen_produk;
 pub mod manajemen_pelanggan;
+pub mod transaksi_penjualan;
 
 #[get("/")]
 fn index() -> &'static str {

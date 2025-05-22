@@ -1,7 +1,7 @@
 use std::sync::Arc;
 use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
-use rocket::{get, post, put, delete, routes, Route, State, catch, catchers};
+use rocket::{get, post, put, delete, routes, Route, State, catch};
 use rocket::serde::{json::Json};
 use rocket::serde::json::serde_json;
 use rocket::http::Status;
@@ -317,6 +317,7 @@ pub fn get_routes() -> Vec<Route> {
 mod tests {
     use super::*;
     use std::sync::Arc;
+    use rocket::catchers;
     use uuid::Uuid;
 
     use crate::manajemen_pembayaran::repository::payment_repository_impl::PaymentRepositoryImpl;

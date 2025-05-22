@@ -1,4 +1,5 @@
-pub mod main;
-
-#[cfg(test)]
-pub mod test;
+pub mod controller;
+pub mod enums;
+pub mod model;
+pub mod repository;
+pub mod service;
