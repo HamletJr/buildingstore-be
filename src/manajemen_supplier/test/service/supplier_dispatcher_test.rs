@@ -2,6 +2,7 @@
 mod tests {
     use std::sync::{Arc, Mutex};
     use chrono::Utc;
+    use async_trait::async_trait;
     use crate::manajemen_supplier::main::model::supplier::Supplier;
     use crate::manajemen_supplier::main::service::supplier_dispatcher::SupplierDispatcher;
     use crate::manajemen_supplier::main::service::supplier_notifier::SupplierNotifier;
@@ -12,12 +13,13 @@ mod tests {
         pub last_supplier_name: Arc<Mutex<Option<String>>>,
     }
 
+    #[async_trait]
     impl SupplierObserver for MockObserver {
-        fn on_supplier_saved(&self, supplier: &Supplier) {
-            let mut called = self.called.lock().unwrap();
-            let mut name = self.last_supplier_name.lock().unwrap();
-            *called = true;
-            *name = Some(supplier.name.clone());
+        async fn on_supplier_saved(&self, supplier: &Supplier) {
+            let mut called_lock = self.called.lock().unwrap();
+            let mut name_lock = self.last_supplier_name.lock().unwrap();
+            *called_lock = true;
+            *name_lock = Some(supplier.name.clone());
         }
     }
 
@@ -32,13 +34,12 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_register_and_notify_observer() {
+    #[tokio::test] 
+    async fn test_register_and_notify_observer() {
         let dispatcher = SupplierDispatcher::new();
 
         let called_flag = Arc::new(Mutex::new(false));
-        let last_name = Arc::new(Mutex::new(None));
-
+        let last_name = Arc::new(Mutex::new(None::<String>));
         let observer = Arc::new(MockObserver {
             called: called_flag.clone(),
             last_supplier_name: last_name.clone(),
@@ -46,19 +47,24 @@ mod tests {
 
         dispatcher.register(observer.clone());
         let supplier = sample_supplier();
-        dispatcher.notify_supplier_saved(&supplier);
+        dispatcher.notify_supplier_saved(&supplier).await;
 
-        assert_eq!(*called_flag.lock().unwrap(), true);
-        assert_eq!(last_name.lock().unwrap().as_deref(), Some("Test Supplier"));
+        assert_eq!(*called_flag.lock().unwrap(), true, "Observer was not called");
+        assert_eq!(
+            last_name.lock().unwrap().as_deref(),
+            Some("Test Supplier"),
+            "Supplier name was not correctly recorded by observer"
+        );
     }
 
-    #[test]
-    fn test_supplier_notifier_trait_works() {
+
+    #[tokio::test]
+    async fn test_supplier_notifier_trait_works() {
         let dispatcher = SupplierDispatcher::new();
-        let notifier: Arc<dyn SupplierNotifier> = Arc::new(dispatcher.clone());
+        let notifier: Arc<dyn SupplierNotifier> = Arc::new(dispatcher.clone()); 
 
         let called_flag = Arc::new(Mutex::new(false));
-        let last_name = Arc::new(Mutex::new(None));
+        let last_name = Arc::new(Mutex::new(None::<String>));
 
         let observer = Arc::new(MockObserver {
             called: called_flag.clone(),
@@ -67,10 +73,13 @@ mod tests {
 
         dispatcher.register(observer);
         let supplier = sample_supplier();
+        notifier.notify_supplier_saved(&supplier).await;
 
-        notifier.notify_supplier_saved(&supplier);
-
-        assert_eq!(*called_flag.lock().unwrap(), true);
-        assert_eq!(last_name.lock().unwrap().as_deref(), Some("Test Supplier"));
+        assert_eq!(*called_flag.lock().unwrap(), true, "Observer was not called via trait");
+        assert_eq!(
+            last_name.lock().unwrap().as_deref(),
+            Some("Test Supplier"),
+            "Supplier name was not correctly recorded by observer via trait"
+        );
     }
 }

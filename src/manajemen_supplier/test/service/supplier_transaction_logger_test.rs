@@ -1,31 +1,32 @@
 #[cfg(test)]
 mod tests {
     use std::sync::{Arc, Mutex};
-
     use chrono::Utc;
+    use async_trait::async_trait;
 
     use crate::manajemen_supplier::main::model::supplier::Supplier;
     use crate::manajemen_supplier::main::model::supplier_transaction::SupplierTransaction;
     use crate::manajemen_supplier::main::repository::supplier_transaction_repository::SupplierTransactionRepository;
-    use crate::manajemen_supplier::main::patterns::observer::SupplierObserver;
+    use crate::manajemen_supplier::main::service::supplier_observer::SupplierObserver;
     use crate::manajemen_supplier::main::service::supplier_transaction_logger::SupplierTransactionLogger;
 
     struct MockSupplierTransactionRepository {
         pub saved_transaction: Arc<Mutex<Option<SupplierTransaction>>>,
     }
 
+    #[async_trait]
     impl SupplierTransactionRepository for MockSupplierTransactionRepository {
-        fn save(&self, trx: SupplierTransaction) -> Result<SupplierTransaction, std::string::String> {
+        async fn save(&self, trx: SupplierTransaction) -> Result<SupplierTransaction, std::string::String> {
             let mut lock = self.saved_transaction.lock().unwrap();
             *lock = Some(trx.clone());
             Ok(trx)
         }
 
-        fn find_by_id(&self, _id: &str) -> Option<SupplierTransaction> {
+        async fn find_by_id(&self, _id: &str) -> Option<SupplierTransaction> {
             None
         }
     
-        fn find_by_supplier_id(&self, _supplier_id: &str) -> Vec<SupplierTransaction> {
+        async fn find_by_supplier_id(&self, _supplier_id: &str) -> Vec<SupplierTransaction> {
             vec![]
         }
     }
@@ -41,26 +42,28 @@ mod tests {
         }
     }
 
-    #[test]
-    fn test_on_supplier_saved_logs_transaction() {
-        let saved_trx = Arc::new(Mutex::new(None));
+    #[tokio::test]
+    async fn test_on_supplier_saved_logs_transaction() {
+        let saved_trx_shared = Arc::new(Mutex::new(None::<SupplierTransaction>));
 
         let mock_repo = Arc::new(MockSupplierTransactionRepository {
-            saved_transaction: saved_trx.clone(),
+            saved_transaction: saved_trx_shared.clone(),
         });
 
         let logger = SupplierTransactionLogger::new(mock_repo);
         let supplier = sample_supplier();
-        logger.on_supplier_saved(&supplier);
 
-        let logged = saved_trx.lock().unwrap();
-        assert!(logged.is_some());
-        let trx = logged.as_ref().unwrap();
+        logger.on_supplier_saved(&supplier).await;
 
-        assert_eq!(trx.supplier_id, "SUP-123");
-        assert_eq!(trx.supplier_name, "PT. Pt");
-        assert_eq!(trx.jenis_barang, "Ayam");
-        assert_eq!(trx.jumlah_barang, 10);
-        assert_eq!(trx.pengiriman_info, "RESI123");
+        let logged_transaction_option = saved_trx_shared.lock().unwrap();
+        assert!(logged_transaction_option.is_some(), "Transaction was not logged");
+        
+        let logged_trx = logged_transaction_option.as_ref().unwrap();
+
+        assert_eq!(logged_trx.supplier_id, "SUP-123");
+        assert_eq!(logged_trx.supplier_name, "PT. Pt");
+        assert_eq!(logged_trx.jenis_barang, "Ayam");
+        assert_eq!(logged_trx.jumlah_barang, 10);
+        assert_eq!(logged_trx.pengiriman_info, "RESI123");
     }
 }

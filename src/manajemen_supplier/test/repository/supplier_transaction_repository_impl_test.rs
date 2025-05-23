@@ -6,8 +6,8 @@ use crate::manajemen_supplier::main::model::supplier_transaction::SupplierTransa
 use crate::manajemen_supplier::main::repository::supplier_transaction_repository::SupplierTransactionRepository;
 use crate::manajemen_supplier::main::repository::supplier_transaction_repository_impl::SupplierTransactionRepositoryImpl;
 
-#[test]
-fn save_supplier_transaction() {
+#[tokio::test]
+async fn save_supplier_transaction() {
     let repository = SupplierTransactionRepositoryImpl::new();
     let supplier_id = format!("SUP-{}", Uuid::new_v4());
 
@@ -30,15 +30,15 @@ fn save_supplier_transaction() {
         tanggal_transaksi: Utc::now(),
     };
 
-    let result = repository.save(transaksi.clone());
+    let result = repository.save(transaksi.clone()).await;
     assert!(result.is_ok());
     let saved = result.unwrap();
     assert_eq!(saved.supplier_id, supplier.id);
     assert_eq!(saved.supplier_name, supplier.name);
 }
 
-#[test]
-fn test_find_supplier_transaction_by_id() {
+#[tokio::test]
+async fn test_find_supplier_transaction_by_id() {
     let repository = SupplierTransactionRepositoryImpl::new();
     let supplier_id = format!("SUP-{}", Uuid::new_v4());
 
@@ -61,14 +61,14 @@ fn test_find_supplier_transaction_by_id() {
         tanggal_transaksi: Utc::now(),
     };
 
-    repository.save(transaksi.clone()).unwrap();
-    let found = repository.find_by_id(&transaksi.id);
+    repository.save(transaksi.clone()).await.unwrap();
+    let found = repository.find_by_id(&transaksi.id).await;
     assert!(found.is_some());
     assert_eq!(found.unwrap().id, transaksi.id);
 }
 
-#[test]
-fn test_find_supplier_transaction_by_supplier_id() {
+#[tokio::test]
+async fn test_find_supplier_transaction_by_supplier_id() {
     let repository = SupplierTransactionRepositoryImpl::new();
     let supplier_id = format!("SUP-{}", Uuid::new_v4());
 
@@ -91,8 +91,8 @@ fn test_find_supplier_transaction_by_supplier_id() {
         tanggal_transaksi: Utc::now(),
     };
 
-    repository.save(transaksi.clone()).unwrap();
-    let results = repository.find_by_supplier_id(&supplier.id);
+    repository.save(transaksi.clone()).await.unwrap();
+    let results = repository.find_by_supplier_id(&supplier.id).await;
     assert!(!results.is_empty());
     assert_eq!(results[0].supplier_id, supplier.id);
 }

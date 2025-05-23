@@ -1,7 +1,10 @@
+use async_trait::async_trait;
 use crate::manajemen_supplier::main::model::supplier::Supplier;
+
+#[async_trait]
 pub trait SupplierRepository: Send + Sync {
-    fn save(&self, supplier: Supplier) -> Result<Supplier, String>;
-    fn find_by_id(&self, id: &str) -> Option<Supplier>;
-    fn update(&self, supplier: Supplier) -> Result<(), String>;
-    fn delete(&self, id: &str) -> Result<(), String>;
+    async fn save(&self, supplier: Supplier) -> Result<Supplier, String>;
+    async fn find_by_id(&self, id: &str) -> Option<Supplier>;
+    async fn update(&self, supplier: Supplier) -> Result<(), String>;
+    async fn delete(&self, id: &str) -> Result<(), String>;
 }

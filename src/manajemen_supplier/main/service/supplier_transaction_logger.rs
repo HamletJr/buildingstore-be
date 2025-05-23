@@ -1,8 +1,9 @@
 use std::sync::Arc;
+use async_trait::async_trait;
 
 use crate::manajemen_supplier::main::model::supplier::Supplier;
 use crate::manajemen_supplier::main::patterns::factory::SupplierTransactionFactory;
-use crate::manajemen_supplier::main::patterns::observer::SupplierObserver;
+use crate::manajemen_supplier::main::service::supplier_observer::SupplierObserver;
 use crate::manajemen_supplier::main::repository::supplier_transaction_repository::SupplierTransactionRepository;
 
 #[derive(Clone)]
@@ -16,10 +17,11 @@ impl SupplierTransactionLogger {
     }
 }
 
+#[async_trait]
 impl SupplierObserver for SupplierTransactionLogger {
-    fn on_supplier_saved(&self, supplier: &Supplier) {
+    async fn on_supplier_saved(&self, supplier: &Supplier) {
         let trx = SupplierTransactionFactory::create_from_supplier(supplier);
-        if let Err(err) = self.trx_repo.save(trx) {
+        if let Err(err) = self.trx_repo.save(trx).await {
             eprintln!("Failed to log transaction: {}", err);
         }
     }

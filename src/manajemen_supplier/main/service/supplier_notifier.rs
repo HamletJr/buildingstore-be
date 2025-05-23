@@ -1,5 +1,7 @@
 use crate::manajemen_supplier::main::model::supplier::Supplier;
+use::async_trait::async_trait;
 
+#[async_trait]
 pub trait SupplierNotifier: Send + Sync {
-    fn notify_supplier_saved(&self, supplier: &Supplier);
+    async fn notify_supplier_saved(&self, supplier: &Supplier);
 }

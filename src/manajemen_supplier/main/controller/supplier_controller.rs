@@ -74,7 +74,7 @@ pub async fn save_supplier(
         updated_at: chrono::Utc::now(),
     };
 
-    match service.save_supplier(supplier) {
+    match service.save_supplier(supplier).await {
         Ok(saved) => {
             let response = ApiResponse {
                 success: true,
@@ -87,7 +87,7 @@ pub async fn save_supplier(
             success: false,
             message: format!("Failed to create supplier: {}", e),
             data: None,
-        }))
+        })),
     }
 }
 
@@ -96,7 +96,7 @@ pub async fn get_supplier(
     id: String,
     service: &State<Arc<dyn SupplierService>>,
 ) -> Result<Json<ApiResponse<SupplierResponse>>, NotFound<Json<ApiResponse<String>>>> {
-    match service.get_supplier(&id) {
+    match service.get_supplier(&id).await {
         Some(supplier) => Ok(Json(ApiResponse {
             success: true,
             message: "Supplier found".to_string(),
@@ -125,9 +125,9 @@ pub async fn update_supplier(
         updated_at: chrono::Utc::now(),
     };
 
-    match service.update_supplier(supplier) {
+    match service.update_supplier(supplier).await {
         Ok(()) => {
-            if let Some(updated) = service.get_supplier(&id) {
+            if let Some(updated) = service.get_supplier(&id).await {
                 Ok(Json(ApiResponse {
                     success: true,
                     message: "Supplier updated successfully".to_string(),
@@ -154,7 +154,7 @@ pub async fn delete_supplier(
     id: String,
     service: &State<Arc<dyn SupplierService>>,
 ) -> Result<NoContent, NotFound<Json<ApiResponse<String>>>> {
-    match service.delete_supplier(&id) {
+    match service.delete_supplier(&id).await {
         Ok(()) => Ok(NoContent),
         Err(e) => Err(NotFound(Json(ApiResponse {
             success: false,

@@ -1,6 +1,7 @@
 #![cfg(test)]
 
 use rocket::{local::asynchronous::Client, http::{Status, ContentType}};
+use async_trait::async_trait;
 use std::sync::Arc;
 use chrono::Utc;
 
@@ -20,20 +21,21 @@ pub trait SupplierServiceMock: Send + Sync {
     fn delete_supplier(&self, id: &str) -> Result<(), String>;
 }
 
+#[async_trait]
 impl SupplierService for MockSupplierServiceMock {
-    fn save_supplier(&self, supplier: Supplier) -> Result<Supplier, String> {
+    async fn save_supplier(&self, supplier: Supplier) -> Result<Supplier, String> {
         SupplierServiceMock::save_supplier(self, supplier)
     }
 
-    fn get_supplier(&self, id: &str) -> Option<Supplier> {
+    async fn get_supplier(&self, id: &str) -> Option<Supplier> {
         SupplierServiceMock::get_supplier(self, id)
     }
 
-    fn update_supplier(&self, supplier: Supplier) -> Result<(), String> {
+    async fn update_supplier(&self, supplier: Supplier) -> Result<(), String> {
         SupplierServiceMock::update_supplier(self, supplier)
     }
 
-    fn delete_supplier(&self, id: &str) -> Result<(), String> {
+    async fn delete_supplier(&self, id: &str) -> Result<(), String> {
         SupplierServiceMock::delete_supplier(self, id)
     }
 }
