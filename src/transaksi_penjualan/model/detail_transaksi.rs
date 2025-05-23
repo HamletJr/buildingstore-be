@@ -1,22 +1,17 @@
-///model/detail_transaksi.rs
 use rocket::serde::{Serialize, Deserialize};
 
-/// Struct representing transaction details (Detail Transaksi) in the system.
-/// Contains information about products in a transaction with reference to product ID only.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(crate = "rocket::serde")]
 pub struct DetailTransaksi {
     pub id: i32,
     pub id_transaksi: i32,
     pub id_produk: i32,
-    pub harga_satuan: f64,  // Price at the time of transaction
+    pub harga_satuan: f64, 
     pub jumlah: u32,
     pub subtotal: f64,
 }
 
 impl DetailTransaksi {
-    /// Creates a new instance of `DetailTransaksi`. Automatically calculates subtotal.
-    /// Note: harga_satuan should be fetched from the current product price when creating the transaction.
     pub fn new(
         id_transaksi: i32,
         id_produk: i32,
@@ -35,14 +30,11 @@ impl DetailTransaksi {
         }
     }
 
-    /// Updates the quantity and recalculates subtotal
     pub fn update_jumlah(&mut self, jumlah: u32) {
         self.jumlah = jumlah;
         self.subtotal = self.harga_satuan * jumlah as f64;
     }
 
-    /// Updates the unit price and recalculates subtotal
-    /// This should rarely be used after transaction creation
     pub fn update_harga_satuan(&mut self, harga_satuan: f64) {
         self.harga_satuan = harga_satuan;
         self.subtotal = harga_satuan * self.jumlah as f64;

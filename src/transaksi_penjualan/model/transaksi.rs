@@ -1,10 +1,7 @@
-///model/transaksi.rs
 use chrono::{Utc, NaiveDateTime};
 use rocket::serde::{Serialize, Deserialize};
 use crate::transaksi_penjualan::enums::status_transaksi::StatusTransaksi;
 
-/// Struct representing a transaction (Transaksi) in the system.
-/// Contains fields for transaction details, customer info, and payment status.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(crate = "rocket::serde")]
 pub struct Transaksi {
@@ -18,8 +15,6 @@ pub struct Transaksi {
 }
 
 impl Transaksi {
-    /// Creates a new instance of `Transaksi`. Automatically initializes the `id` to 0
-    /// and sets the `tanggal_transaksi` to the current datetime.
     pub fn new(
         id_pelanggan: i32,
         nama_pelanggan: String,
@@ -37,17 +32,14 @@ impl Transaksi {
         }
     }
 
-    /// Updates the transaction status
     pub fn update_status(&mut self, status: StatusTransaksi) {
         self.status = status;
     }
 
-    /// Updates the total price
     pub fn update_total_harga(&mut self, total_harga: f64) {
         self.total_harga = total_harga;
     }
 
-    /// Checks if transaction can be modified (only if status is MasihDiproses)
     pub fn can_be_modified(&self) -> bool {
         self.status == StatusTransaksi::MasihDiproses
     }

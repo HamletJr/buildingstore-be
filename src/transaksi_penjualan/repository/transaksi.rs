@@ -1,4 +1,3 @@
-///repository/transaksi.rs
 use sqlx::any::AnyRow;
 use sqlx::{Any, pool::PoolConnection};
 use sqlx::Row;
@@ -133,7 +132,6 @@ impl TransaksiRepository {
         Ok(transaksi_list)
     }
 
-    // Detail Transaksi methods
     pub async fn create_detail_transaksi(mut db: PoolConnection<Any>, detail: &DetailTransaksi) -> Result<DetailTransaksi, sqlx::Error> {
         let result = sqlx::query("
                 INSERT INTO detail_transaksi (id_transaksi, id_produk, harga_satuan, jumlah, subtotal)

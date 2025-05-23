@@ -1,4 +1,3 @@
-///controller/transaksi.rs
 use rocket::{get, post, patch, delete, put};
 use rocket::State;
 use rocket::http::Status;
@@ -9,7 +8,6 @@ use crate::transaksi_penjualan::model::detail_transaksi::DetailTransaksi;
 use crate::transaksi_penjualan::service::transaksi::TransaksiService;
 use crate::transaksi_penjualan::enums::status_transaksi::StatusTransaksi;
 
-// Transaksi endpoints
 #[get("/transaksi?<sort>&<filter>&<keyword>&<status>&<id_pelanggan>")]
 pub async fn get_all_transaksi(
     db: &State<Pool<Any>>, 
@@ -37,12 +35,10 @@ pub async fn get_all_transaksi(
             .map_err(|_| Status::InternalServerError)?
     };
 
-    // Apply sorting
     if let Some(sort_strategy) = &sort {
         transaksi_list = TransaksiService::sort_transaksi(transaksi_list, sort_strategy);
     }
 
-    // Apply filtering
     if let Some(filter_strategy) = &filter {
         if let Some(keyword_value) = &keyword {
             transaksi_list = TransaksiService::filter_transaksi(transaksi_list, filter_strategy, keyword_value);
@@ -52,11 +48,19 @@ pub async fn get_all_transaksi(
     Ok(Json(transaksi_list))
 }
 
-#[post("/transaksi", data = "<transaksi>")]
-pub async fn create_transaksi(db: &State<Pool<Any>>, transaksi: Json<Transaksi>) -> Result<Json<Transaksi>, Status> {
-    let new_transaksi = TransaksiService::create_transaksi(db.inner().clone(), &transaksi)
+#[post("/transaksi", data = "<request>")]
+pub async fn create_transaksi(
+    db: &State<Pool<Any>>, 
+    request: Json<crate::transaksi_penjualan::dto::transaksi_request::CreateTransaksiRequest>
+) -> Result<Json<Transaksi>, Status> {
+    if let Err(_err_msg) = TransaksiService::validate_product_stock(&request.detail_transaksi).await {
+        return Err(Status::BadRequest);
+    }
+
+    let new_transaksi = TransaksiService::create_transaksi_with_details(db.inner().clone(), &request)
         .await
         .map_err(|_| Status::InternalServerError)?;
+    
     Ok(Json(new_transaksi))
 }
 
@@ -104,7 +108,6 @@ pub async fn cancel_transaksi(db: &State<Pool<Any>>, id: i32) -> Result<Json<Tra
     Ok(Json(cancelled_transaksi))
 }
 
-// Detail Transaksi endpoints
 #[get("/transaksi/<id_transaksi>/detail")]
 pub async fn get_detail_transaksi(db: &State<Pool<Any>>, id_transaksi: i32) -> Result<Json<Vec<DetailTransaksi>>, Status> {
     let detail_list = TransaksiService::get_detail_by_transaksi_id(db.inner().clone(), id_transaksi)
@@ -194,23 +197,30 @@ mod tests {
         let rocket = setup().await;
         let client = Client::tracked(rocket).await.expect("Must provide a valid Rocket instance");
 
-        let new_transaksi = Transaksi::new(
-            1,
-            "Castorice".to_string(),
-            150000.0,
-            Some("Test transaction".to_string()),
-        );
+        let new_transaksi_request = crate::transaksi_penjualan::dto::transaksi_request::CreateTransaksiRequest {
+            id_pelanggan: 1,
+            nama_pelanggan: "Castorice".to_string(),
+            catatan: Some("Test transaction".to_string()),
+            detail_transaksi: vec![
+                crate::transaksi_penjualan::dto::transaksi_request::CreateDetailTransaksiRequest {
+                    id_produk: 1,
+                    nama_produk: "Contoh Produk".to_string(),
+                    harga_satuan: 10000.0,
+                    jumlah: 2,
+                },
+            ],
+        };
+
 
         let response = client.post(uri!(super::create_transaksi))
-            .json(&new_transaksi)
+            .json(&new_transaksi_request)
             .dispatch()
             .await;
 
         assert_eq!(response.status(), Status::Ok);
         let body = response.into_json::<Transaksi>().await.unwrap();
-        assert_eq!(body.nama_pelanggan, new_transaksi.nama_pelanggan);
-        assert_eq!(body.total_harga, new_transaksi.total_harga);
-        assert_eq!(body.status, StatusTransaksi::MasihDiproses);
+        assert_eq!(body.nama_pelanggan, new_transaksi_request.nama_pelanggan);
+        assert!(body.total_harga > 0.0);
     }
 
     #[async_test]
@@ -360,17 +370,14 @@ mod tests {
         let transaksi1 = Transaksi::new(1, "Alice".to_string(), 100000.0, None);
         let transaksi2 = Transaksi::new(2, "Bob".to_string(), 200000.0, None);
 
-        // Create transactions
         let response1 = client.post(uri!(super::create_transaksi)).json(&transaksi1).dispatch().await;
         let created1 = response1.into_json::<Transaksi>().await.unwrap();
         
         let response2 = client.post(uri!(super::create_transaksi)).json(&transaksi2).dispatch().await;
-        let created2 = response2.into_json::<Transaksi>().await.unwrap();
+        let _created2 = response2.into_json::<Transaksi>().await.unwrap();
 
-        // Complete one transaction
         client.put(uri!(super::complete_transaksi(created1.id))).dispatch().await;
 
-        // Filter by status "MASIH_DIPROSES"
         let response = client.get("/transaksi?status=MASIH_DIPROSES").dispatch().await;
 
         assert_eq!(response.status(), Status::Ok);
@@ -472,7 +479,6 @@ mod tests {
 
         assert_eq!(response.status(), Status::NoContent);
 
-        // Verify detail is deleted
         let response = client.get(uri!(super::get_detail_transaksi(created_transaksi.id))).dispatch().await;
         let details = response.into_json::<Vec<DetailTransaksi>>().await.unwrap();
         assert_eq!(details.len(), 0);

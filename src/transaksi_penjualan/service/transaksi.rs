@@ -1,4 +1,3 @@
-///service/transaksi.rs
 use sqlx::{Any, Pool};
 use crate::transaksi_penjualan::model::transaksi::Transaksi;
 use crate::transaksi_penjualan::model::detail_transaksi::DetailTransaksi;
@@ -12,6 +11,83 @@ impl TransaksiService {
         let db_connection = db.acquire().await?;
         TransaksiRepository::create_transaksi(db_connection, transaksi).await
     }
+    pub async fn create_transaksi_with_details(
+        db: Pool<Any>, 
+        request: &crate::transaksi_penjualan::dto::transaksi_request::CreateTransaksiRequest
+    ) -> Result<Transaksi, sqlx::Error> {
+        if let Err(_err_msg) = request.validate() {
+            return Err(sqlx::Error::RowNotFound);
+        }
+
+        let product_prices = Self::fetch_product_prices(&request.detail_transaksi).await?;
+        
+        let total_harga = request.calculate_total(&product_prices);
+
+        let transaksi = Transaksi::new(
+            request.id_pelanggan,
+            request.nama_pelanggan.clone(),
+            total_harga,
+            request.catatan.clone(),
+        );
+
+        let db_connection = db.acquire().await?;
+        let created_transaksi = TransaksiRepository::create_transaksi(db_connection, &transaksi).await?;
+
+        for detail_request in &request.detail_transaksi {
+            let harga_satuan = product_prices.get(&detail_request.id_produk).unwrap_or(&0.0);
+            let detail = detail_request.to_detail_transaksi(created_transaksi.id, *harga_satuan);
+            
+            let db_connection = db.acquire().await?;
+            TransaksiRepository::create_detail_transaksi(db_connection, &detail).await?;
+        }
+
+        Ok(created_transaksi)
+    }
+
+    async fn fetch_product_prices(
+        detail_requests: &[crate::transaksi_penjualan::dto::transaksi_request::CreateDetailTransaksiRequest]
+    ) -> Result<std::collections::HashMap<i32, f64>, sqlx::Error> {
+
+        let mut prices = std::collections::HashMap::new();
+        
+        for detail in detail_requests {
+            prices.insert(detail.id_produk, match detail.id_produk {
+                1 => 100000.0, 
+                2 => 250000.0, 
+                3 => 500000.0,
+                _ => 50000.0,
+            });
+        }
+
+        Ok(prices)
+    }
+
+    pub async fn validate_product_stock(
+        detail_requests: &[crate::transaksi_penjualan::dto::transaksi_request::CreateDetailTransaksiRequest]
+    ) -> Result<(), String> {
+
+        for detail in detail_requests {
+            let available_stock = match detail.id_produk {
+                1 => 100,
+                2 => 50,
+                3 => 25,
+                _ => 0,
+            };
+
+            if available_stock == 0 {
+                return Err(format!("Produk dengan ID {} tidak ditemukan", detail.id_produk));
+            }
+
+            if detail.jumlah > available_stock {
+                return Err(format!(
+                    "Stok produk ID {} tidak mencukupi. Tersedia: {}, Diminta: {}", 
+                    detail.id_produk, available_stock, detail.jumlah
+                ));
+            }
+        }
+
+        Ok(())
+    }
 
     pub async fn get_transaksi_by_id(db: Pool<Any>, id: i32) -> Result<Transaksi, sqlx::Error> {
         let db_connection = db.acquire().await?;
@@ -19,10 +95,9 @@ impl TransaksiService {
     }
 
     pub async fn update_transaksi(db: Pool<Any>, transaksi: &Transaksi) -> Result<Transaksi, sqlx::Error> {
-        // Check if transaction can be modified
         let existing_transaksi = Self::get_transaksi_by_id(db.clone(), transaksi.id).await?;
         if !existing_transaksi.can_be_modified() {
-            return Err(sqlx::Error::RowNotFound); // or custom error
+            return Err(sqlx::Error::RowNotFound);
         }
 
         let db_connection = db.acquire().await?;
@@ -30,13 +105,11 @@ impl TransaksiService {
     }
 
     pub async fn delete_transaksi(db: Pool<Any>, id: i32) -> Result<(), sqlx::Error> {
-        // Check if transaction can be cancelled
         let existing_transaksi = Self::get_transaksi_by_id(db.clone(), id).await?;
         if !existing_transaksi.status.can_be_cancelled() {
-            return Err(sqlx::Error::RowNotFound); // or custom error
+            return Err(sqlx::Error::RowNotFound); 
         }
 
-        // Delete all related detail transactions first
         let db_connection_detail = db.acquire().await?;
         TransaksiRepository::delete_detail_by_transaksi_id(db_connection_detail, id).await?;
 
@@ -63,7 +136,7 @@ impl TransaksiService {
         let mut transaksi = Self::get_transaksi_by_id(db.clone(), id).await?;
         
         if !transaksi.can_be_modified() {
-            return Err(sqlx::Error::RowNotFound); // or custom error
+            return Err(sqlx::Error::RowNotFound);
         }
 
         transaksi.update_status(StatusTransaksi::Selesai);
@@ -74,25 +147,22 @@ impl TransaksiService {
         let mut transaksi = Self::get_transaksi_by_id(db.clone(), id).await?;
         
         if !transaksi.status.can_be_cancelled() {
-            return Err(sqlx::Error::RowNotFound); // or custom error
+            return Err(sqlx::Error::RowNotFound);
         }
 
         transaksi.update_status(StatusTransaksi::Dibatalkan);
         Self::update_transaksi(db, &transaksi).await
     }
 
-    // Detail Transaksi methods
     pub async fn add_detail_transaksi(db: Pool<Any>, detail: &DetailTransaksi) -> Result<DetailTransaksi, sqlx::Error> {
-        // Check if parent transaction can be modified
         let transaksi = Self::get_transaksi_by_id(db.clone(), detail.id_transaksi).await?;
         if !transaksi.can_be_modified() {
-            return Err(sqlx::Error::RowNotFound); // or custom error
+            return Err(sqlx::Error::RowNotFound);
         }
 
         let db_connection = db.acquire().await?;
         let created_detail = TransaksiRepository::create_detail_transaksi(db_connection, detail).await?;
 
-        // Update transaction total
         Self::recalculate_transaction_total(db, detail.id_transaksi).await?;
 
         Ok(created_detail)
@@ -104,38 +174,33 @@ impl TransaksiService {
     }
 
     pub async fn update_detail_transaksi(db: Pool<Any>, detail: &DetailTransaksi) -> Result<DetailTransaksi, sqlx::Error> {
-        // Check if parent transaction can be modified
         let transaksi = Self::get_transaksi_by_id(db.clone(), detail.id_transaksi).await?;
         if !transaksi.can_be_modified() {
-            return Err(sqlx::Error::RowNotFound); // or custom error
+            return Err(sqlx::Error::RowNotFound);
         }
 
         let db_connection = db.acquire().await?;
         let updated_detail = TransaksiRepository::update_detail_transaksi(db_connection, detail).await?;
 
-        // Update transaction total
         Self::recalculate_transaction_total(db, detail.id_transaksi).await?;
 
         Ok(updated_detail)
     }
 
     pub async fn delete_detail_transaksi(db: Pool<Any>, id: i32, id_transaksi: i32) -> Result<(), sqlx::Error> {
-        // Check if parent transaction can be modified
         let transaksi = Self::get_transaksi_by_id(db.clone(), id_transaksi).await?;
         if !transaksi.can_be_modified() {
-            return Err(sqlx::Error::RowNotFound); // or custom error
+            return Err(sqlx::Error::RowNotFound);
         }
 
         let db_connection = db.acquire().await?;
         TransaksiRepository::delete_detail_transaksi(db_connection, id).await?;
 
-        // Update transaction total
         Self::recalculate_transaction_total(db, id_transaksi).await?;
 
         Ok(())
     }
 
-    // Helper method to recalculate transaction total
     async fn recalculate_transaction_total(db: Pool<Any>, id_transaksi: i32) -> Result<(), sqlx::Error> {
         let details = Self::get_detail_by_transaksi_id(db.clone(), id_transaksi).await?;
         let total: f64 = details.iter().map(|d| d.subtotal).sum();
@@ -149,7 +214,6 @@ impl TransaksiService {
         Ok(())
     }
 
-    // Sorting methods
     pub fn sort_transaksi(mut transaksi_list: Vec<Transaksi>, sort_by: &str) -> Vec<Transaksi> {
         match sort_by.to_lowercase().as_str() {
             "tanggal" | "tanggal_transaksi" => {
@@ -171,14 +235,12 @@ impl TransaksiService {
                 transaksi_list.sort_by(|a, b| a.status.to_string().cmp(&b.status.to_string()));
             }
             _ => {
-                // Default sort by tanggal_transaksi descending
                 transaksi_list.sort_by(|a, b| b.tanggal_transaksi.cmp(&a.tanggal_transaksi));
             }
         }
         transaksi_list
     }
 
-    // Filtering methods
     pub fn filter_transaksi(transaksi_list: Vec<Transaksi>, filter_by: &str, keyword: &str) -> Vec<Transaksi> {
         let keyword = keyword.to_lowercase();
         
@@ -196,7 +258,6 @@ impl TransaksiService {
                     }
                 }
                 _ => {
-                    // Default: search in all text fields
                     transaksi.nama_pelanggan.to_lowercase().contains(&keyword) ||
                     transaksi.status.to_string().to_lowercase().contains(&keyword) ||
                     (transaksi.catatan.as_ref().map_or(false, |c| c.to_lowercase().contains(&keyword)))
