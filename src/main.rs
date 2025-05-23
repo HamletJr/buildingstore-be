@@ -11,6 +11,7 @@ use rocket_cors::{AllowedOrigins, CorsOptions};
 pub mod auth;
 pub mod manajemen_produk;
 pub mod manajemen_pelanggan;
+pub mod manajemen_pembayaran;
 
 #[get("/")]
 fn index() -> &'static str {
@@ -51,14 +52,14 @@ async fn rocket() -> _ {
     sqlx::migrate!()
         .run(&db_pool)
         .await
-        .expect("Failed to run migrations");
-
-    rocket::build()
+        .expect("Failed to run migrations");    rocket::build()
         .manage(reqwest::Client::builder().build().unwrap())
         .manage(db_pool)
         .attach(cors)
         .attach(BuildingStoreDB::init())
         .attach(auth::controller::route_stage())
+        .attach(manajemen_pelanggan::controller::route_stage())
+        .attach(manajemen_pembayaran::controller::route_stage())
         .attach(manajemen_pelanggan::controller::route_stage())
         .mount("/", routes![index, test_db])
 }
