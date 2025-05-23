@@ -77,8 +77,9 @@ mod test {
     async fn test_create_session() {
         let db = setup().await;
         let user = User::new("test_user".to_string(), "password".to_string(), false);
+        let user_res = UserRepository::create_user(db.acquire().await.unwrap(), user.clone()).await.unwrap();
 
-        let session = Session::new(user.clone());
+        let session = Session::new(user_res.clone());
         let result = SessionRepository::create_session(db.acquire().await.unwrap(), session.clone()).await;
         assert!(result.is_ok());
         let fetched_session = result.unwrap();
@@ -91,8 +92,9 @@ mod test {
     async fn test_get_session_by_key() {
         let db = setup().await;
         let user = User::new("test_user".to_string(), "password".to_string(), false);
+        let user_res = UserRepository::create_user(db.acquire().await.unwrap(), user.clone()).await.unwrap();
 
-        let session = Session::new(user.clone());
+        let session = Session::new(user_res.clone());
         SessionRepository::create_session(db.acquire().await.unwrap(), session.clone()).await.unwrap();
         let retrieved_session = SessionRepository::get_session_by_key(db.acquire().await.unwrap(), Uuid::parse_str(&session.session_key).unwrap()).await;
         assert!(retrieved_session.is_ok());
@@ -113,8 +115,9 @@ mod test {
     async fn test_delete_session() {
         let db = setup().await;
         let user = User::new("test_user".to_string(), "password".to_string(), false);
+        let user_res = UserRepository::create_user(db.acquire().await.unwrap(), user.clone()).await.unwrap();
 
-        let session = Session::new(user.clone());
+        let session = Session::new(user_res.clone());
         SessionRepository::create_session(db.acquire().await.unwrap(), session.clone()).await.unwrap();
         let result = SessionRepository::delete_session(db.acquire().await.unwrap(), Uuid::parse_str(&session.session_key).unwrap()).await;
         assert!(result.is_ok());

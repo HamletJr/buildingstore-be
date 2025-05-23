@@ -3,10 +3,13 @@ use rocket::request::{FromRequest, Outcome, Request};
 use rocket::State;
 use sqlx::{Any, Pool};
 use uuid::Uuid;
+use rocket::serde::{Serialize, Deserialize};
 
 use crate::auth::repository::session::SessionRepository;
 use crate::auth::repository::user::UserRepository;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(crate = "rocket::serde")]
 pub struct AuthenticatedUser {
     pub user_id: i64,
     pub username: String,
