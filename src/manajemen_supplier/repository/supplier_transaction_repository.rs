@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use crate::manajemen_supplier::main::model::supplier_transaction::SupplierTransaction;
+use crate::manajemen_supplier::model::supplier_transaction::SupplierTransaction;
 
 #[async_trait]
 pub trait SupplierTransactionRepository: Send + Sync {

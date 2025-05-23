@@ -1,8 +1,20 @@
+use chrono::{DateTime, Utc};
+
+/// Struct untuk supplier
+#[derive(Debug, Clone, PartialEq)]
+pub struct Supplier {
+    pub id: String,
+    pub name: String,
+    pub jenis_barang: String,
+    pub jumlah_barang: i32,
+    pub resi: String,
+    pub updated_at: DateTime<Utc>,
+}
+
 #[cfg(test)]
 mod tests {
+    use super::*;
     use uuid::Uuid;
-    use chrono::Utc;
-    use crate::manajemen_supplier::main::model::supplier::Supplier;
 
     #[test]
     fn test_create_supplier() {

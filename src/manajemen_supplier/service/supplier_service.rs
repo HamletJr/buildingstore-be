@@ -1,4 +1,4 @@
-use crate::manajemen_supplier::main::model::supplier::Supplier;
+use crate::manajemen_supplier::model::supplier::Supplier;
 use::async_trait::async_trait;
 
 #[async_trait]
