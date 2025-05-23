@@ -1,7 +1,7 @@
 use rocket::serde::{Deserialize, Serialize, json::Json};
 use rocket::{get, post, put, delete, routes};
 use crate::manajemen_produk::produk::model::{Produk, ProdukBuilder};
-use crate::manajemen_produk::produk::repository::{ProdukRepository, RepositoryError};
+use crate::manajemen_produk::produk::repository::{ProdukRepository};
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(crate = "rocket::serde")]

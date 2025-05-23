@@ -8,8 +8,11 @@ use crate::manajemen_pembayaran::repository::payment_repository::PaymentReposito
 use crate::manajemen_pembayaran::patterns::observer::PaymentSubject;
 use crate::manajemen_pembayaran::patterns::factory::{PaymentProcessorFactory, PaymentStateFactory};
 
+use async_trait::async_trait;
+
+#[async_trait]
 pub trait PaymentCommand {
-    fn execute(&self) -> Result<Payment, String>;
+    async fn execute(&self) -> Result<Payment, String>;
 }
 
 pub struct CreatePaymentCommand {
