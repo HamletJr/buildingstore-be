@@ -3,8 +3,8 @@ use std::collections::HashMap;
 use serde::{Serialize, Deserialize};
 use rocket::{get, post, put, delete, routes, Route, State, catch, catchers};
 use rocket::serde::{json::Json};
-use rocket::serde::json::serde_json;
 use rocket::http::Status;
+use sqlx::{Any, Pool};
 
 use crate::manajemen_pembayaran::model::payment::{Payment, PaymentMethod};
 use crate::manajemen_pembayaran::enums::payment_status::PaymentStatus;
@@ -51,244 +51,294 @@ impl PaymentController {
     pub fn new(service: Arc<dyn PaymentService>) -> Self {
         Self { service }
     }
-
-    pub fn create_payment(&self, request: CreatePaymentRequest) -> ApiResponse<Payment> {
-        let method = match request.method.to_uppercase().as_str() {
-            "CASH" => PaymentMethod::Cash,
-            "CREDIT_CARD" => PaymentMethod::CreditCard,
-            "BANK_TRANSFER" => PaymentMethod::BankTransfer,
-            "E_WALLET" => PaymentMethod::EWallet,
-            _ => {
-                return ApiResponse {
-                    success: false,
-                    data: None,
-                    message: Some("Metode pembayaran tidak valid".to_string()),
-                }
-            }
-        };
-
-        match self.service.create_payment(request.transaction_id, request.amount, method) {
-            Ok(payment) => ApiResponse {
-                success: true,
-                data: Some(payment),
-                message: None,
-            },
-            Err(error) => ApiResponse {
-                success: false,
-                data: None,
-                message: Some(error),
-            },
-        }
-    }
-
-    pub fn update_payment_status(&self, request: UpdatePaymentStatusRequest) -> ApiResponse<Payment> {
-        let status = match PaymentStatus::from_string(&request.new_status) {
-            Some(status) => status,
-            None => {
-                return ApiResponse {
-                    success: false,
-                    data: None,
-                    message: Some("Status pembayaran tidak valid".to_string()),
-                }
-            }
-        };
-
-        match self.service.update_payment_status(
-            request.payment_id,
-            status,
-            request.additional_amount,
-        ) {
-            Ok(payment) => ApiResponse {
-                success: true,
-                data: Some(payment),
-                message: None,
-            },
-            Err(error) => ApiResponse {
-                success: false,
-                data: None,
-                message: Some(error),
-            },
-        }
-    }
-
-    pub fn add_installment(&self, request: AddInstallmentRequest) -> ApiResponse<Payment> {
-        match self.service.add_installment(&request.payment_id, request.amount) {
-            Ok(payment) => ApiResponse {
-                success: true,
-                data: Some(payment),
-                message: None,
-            },
-            Err(error) => ApiResponse {
-                success: false,
-                data: None,
-                message: Some(error),
-            },
-        }
-    }
-
-    pub fn get_payment(&self, payment_id: &str) -> ApiResponse<Payment> {
-        match self.service.get_payment(payment_id) {
-            Some(payment) => ApiResponse {
-                success: true,
-                data: Some(payment),
-                message: None,
-            },
-            None => ApiResponse {
-                success: false,
-                data: None,
-                message: Some(format!("Pembayaran dengan ID {} tidak ditemukan", payment_id)),
-            },
-        }
-    }
-
-    pub fn get_payment_by_transaction(&self, transaction_id: &str) -> ApiResponse<Payment> {
-        match self.service.get_payment_by_transaction(transaction_id) {
-            Some(payment) => ApiResponse {
-                success: true,
-                data: Some(payment),
-                message: None,
-            },
-            None => ApiResponse {
-                success: false,
-                data: None,
-                message: Some(format!(
-                    "Pembayaran untuk transaksi {} tidak ditemukan",
-                    transaction_id
-                )),
-            },
-        }
-    }
-
-    pub fn get_all_payments(&self, filter: Option<PaymentFilterRequest>) -> ApiResponse<Vec<Payment>> {
-        let mut filters: Option<HashMap<String, String>> = None;
-        
-        if let Some(filter_req) = filter {
-            let mut map = HashMap::new();
-            
-            if let Some(status) = filter_req.status {
-                map.insert("status".to_string(), status);
-            }
-            
-            if let Some(method) = filter_req.method {
-                map.insert("method".to_string(), method);
-            }
-            
-            if !map.is_empty() {
-                filters = Some(map);
-            }
-        }
-
-        let payments = self.service.get_all_payments(filters);
-        
-        ApiResponse {
-            success: true,
-            data: Some(payments),
-            message: None,
-        }
-    }
-
-    pub fn delete_payment(&self, payment_id: &str) -> ApiResponse<()> {
-        match self.service.delete_payment(payment_id.to_string()) {
-            Ok(_) => ApiResponse {
-                success: true,
-                data: Some(()),
-                message: Some("Pembayaran berhasil dihapus".to_string()),
-            },
-            Err(error) => ApiResponse {
-                success: false,
-                data: None,
-                message: Some(error),
-            },
-        }
-    }
 }
 
-// Updated endpoints to return correct status codes for invalid scenarios.
-
+// Updated endpoints yang menggunakan koneksi database
 #[post("/create", format = "json", data = "<request>")]
-pub fn create_payment_endpoint(
+pub async fn create_payment_endpoint(
+    db: &State<Pool<Any>>,
     request: Json<CreatePaymentRequest>,
     controller: &State<PaymentController>,
 ) -> (Status, Json<ApiResponse<Payment>>) {
-    let response = controller.create_payment(request.into_inner());
-    if response.success {
-        (Status::Ok, Json(response))
-    } else {
-        (Status::BadRequest, Json(response))
+    // Convert method string ke enum
+    let method = match request.method.to_uppercase().as_str() {
+        "CASH" => PaymentMethod::Cash,
+        "CREDIT_CARD" => PaymentMethod::CreditCard,
+        "TRANSFER" => PaymentMethod::Transfer,
+        _ => {
+            return (
+                Status::BadRequest,
+                Json(ApiResponse {
+                    success: false,
+                    data: None,
+                    message: Some("Invalid payment method".to_string()),
+                }),
+            )
+        }
+    };
+
+    // Panggil service dengan koneksi database
+    let result = controller.service.create_payment(
+        db.inner().clone(),
+        request.transaction_id.clone(),
+        request.amount,
+        method,
+    ).await;
+
+    // Handle response
+    match result {
+        Ok(payment) => (
+            Status::Created,
+            Json(ApiResponse {
+                success: true,
+                data: Some(payment),
+                message: None,
+            }),
+        ),
+        Err(error) => (
+            Status::BadRequest,
+            Json(ApiResponse {
+                success: false,
+                data: None,
+                message: Some(error),
+            }),
+        ),
     }
 }
 
 #[put("/update_status", format = "json", data = "<request>")]
-pub fn update_payment_status_endpoint(
+pub async fn update_payment_status_endpoint(
+    db: &State<Pool<Any>>,
     request: Json<UpdatePaymentStatusRequest>,
     controller: &State<PaymentController>,
 ) -> (Status, Json<ApiResponse<Payment>>) {
-    let response = controller.update_payment_status(request.into_inner());
-    if response.success {
-        (Status::Ok, Json(response))
-    } else {
-        (Status::BadRequest, Json(response))
+    // Convert status string ke enum
+    let status = match request.new_status.to_uppercase().as_str() {
+        "PENDING" => PaymentStatus::Pending,
+        "PAID" | "LUNAS" => PaymentStatus::Paid,
+        "INSTALLMENT" | "CICILAN" => PaymentStatus::Installment,
+        _ => {
+            return (
+                Status::BadRequest,
+                Json(ApiResponse {
+                    success: false,
+                    data: None,
+                    message: Some("Invalid payment status".to_string()),
+                }),
+            )
+        }
+    };
+
+    // Panggil service dengan koneksi database
+    let result = controller.service.update_payment_status(
+        db.inner().clone(),
+        request.payment_id.clone(),
+        status,
+        request.additional_amount,
+    ).await;
+
+    // Handle response
+    match result {
+        Ok(payment) => (
+            Status::Ok,
+            Json(ApiResponse {
+                success: true,
+                data: Some(payment),
+                message: None,
+            }),
+        ),
+        Err(error) => (
+            Status::BadRequest,
+            Json(ApiResponse {
+                success: false,
+                data: None,
+                message: Some(error),
+            }),
+        ),
     }
 }
 
 #[put("/add_installment", format = "json", data = "<request>")]
-pub fn add_installment_endpoint(
+pub async fn add_installment_endpoint(
+    db: &State<Pool<Any>>,
     request: Json<AddInstallmentRequest>,
     controller: &State<PaymentController>,
-) -> Json<ApiResponse<Payment>> {
-    Json(controller.add_installment(request.into_inner()))
+) -> (Status, Json<ApiResponse<Payment>>) {
+    // Panggil service dengan koneksi database
+    let result = controller.service.add_installment(
+        db.inner().clone(),
+        &request.payment_id,
+        request.amount,
+    ).await;
+
+    // Handle response
+    match result {
+        Ok(payment) => (
+            Status::Ok,
+            Json(ApiResponse {
+                success: true,
+                data: Some(payment),
+                message: None,
+            }),
+        ),
+        Err(error) => (
+            Status::BadRequest,
+            Json(ApiResponse {
+                success: false,
+                data: None,
+                message: Some(error),
+            }),
+        ),
+    }
 }
 
 #[get("/<payment_id>")]
-pub fn get_payment_endpoint(
+pub async fn get_payment_endpoint(
+    db: &State<Pool<Any>>,
     payment_id: String,
     controller: &State<PaymentController>,
 ) -> (Status, Json<ApiResponse<Payment>>) {
-    let response = controller.get_payment(&payment_id);
-    if response.success {
-        (Status::Ok, Json(response))
-    } else {
-        (Status::NotFound, Json(response))
+    // Panggil service dengan koneksi database
+    let result = controller.service.get_payment(db.inner().clone(), &payment_id).await;
+
+    // Handle response
+    match result {
+        Ok(payment) => (
+            Status::Ok,
+            Json(ApiResponse {
+                success: true,
+                data: Some(payment),
+                message: None,
+            }),
+        ),
+        Err(_) => (
+            Status::NotFound,
+            Json(ApiResponse {
+                success: false,
+                data: None,
+                message: Some(format!("Payment with ID {} not found", payment_id)),
+            }),
+        ),
     }
 }
 
-#[get("/transaction/<transaction_id>")]
-pub fn get_payment_by_transaction_endpoint(
+#[get("/by_transaction/<transaction_id>")]
+pub async fn get_payment_by_transaction_endpoint(
+    db: &State<Pool<Any>>,
     transaction_id: String,
     controller: &State<PaymentController>,
-) -> Json<ApiResponse<Payment>> {
-    Json(controller.get_payment_by_transaction(&transaction_id))
+) -> (Status, Json<ApiResponse<Payment>>) {
+    // Panggil service dengan koneksi database
+    let result = controller.service.get_payment_by_transaction(
+        db.inner().clone(),
+        &transaction_id,
+    ).await;
+
+    // Handle response
+    match result {
+        Ok(payment) => (
+            Status::Ok,
+            Json(ApiResponse {
+                success: true,
+                data: Some(payment),
+                message: None,
+            }),
+        ),
+        Err(_) => (
+            Status::NotFound,
+            Json(ApiResponse {
+                success: false,
+                data: None,
+                message: Some(format!("Payment with transaction ID {} not found", transaction_id)),
+            }),
+        ),
+    }
 }
 
-#[get("/all?<filter>")]
-pub fn get_all_payments_endpoint(
-    filter: Option<&str>,
+#[get("/all?<status>&<method>")]
+pub async fn get_all_payments_endpoint(
+    db: &State<Pool<Any>>,
+    status: Option<String>,
+    method: Option<String>,
     controller: &State<PaymentController>,
-) -> Json<ApiResponse<Vec<Payment>>> {
-    let filter_request = filter
-        .and_then(|f| serde_json::from_str::<PaymentFilterRequest>(f).ok());
-    Json(controller.get_all_payments(filter_request))
+) -> (Status, Json<ApiResponse<Vec<Payment>>>) {
+    // Buat filters jika parameter tersedia
+    let mut filters = None;
+    if status.is_some() || method.is_some() {
+        let mut filter_map = HashMap::new();
+        
+        if let Some(status_val) = status {
+            filter_map.insert("status".to_string(), status_val);
+        }
+        
+        if let Some(method_val) = method {
+            filter_map.insert("method".to_string(), method_val);
+        }
+        
+        filters = Some(filter_map);
+    }
+
+    // Panggil service dengan koneksi database
+    let result = controller.service.get_all_payments(db.inner().clone(), filters).await;
+
+    // Handle response
+    match result {
+        Ok(payments) => (
+            Status::Ok,
+            Json(ApiResponse {
+                success: true,
+                data: Some(payments),
+                message: None,
+            }),
+        ),
+        Err(error) => (
+            Status::InternalServerError,
+            Json(ApiResponse {
+                success: false,
+                data: None,
+                message: Some(error),
+            }),
+        ),
+    }
 }
 
 #[delete("/<payment_id>")]
-pub fn delete_payment_endpoint(
+pub async fn delete_payment_endpoint(
+    db: &State<Pool<Any>>,
     payment_id: String,
     controller: &State<PaymentController>,
 ) -> (Status, Json<ApiResponse<()>>) {
-    let response = controller.delete_payment(&payment_id);
-    if response.success {
-        (Status::Ok, Json(response))
-    } else {
-        (Status::NotFound, Json(response))
+    // Panggil service dengan koneksi database
+    let result = controller.service.delete_payment(db.inner().clone(), payment_id.clone()).await;
+
+    // Handle response
+    match result {
+        Ok(_) => (
+            Status::Ok,
+            Json(ApiResponse {
+                success: true,
+                data: Some(()),
+                message: None,
+            }),
+        ),
+        Err(error) => (
+            Status::BadRequest,
+            Json(ApiResponse {
+                success: false,
+                data: None,
+                message: Some(error),
+            }),
+        ),
     }
 }
 
+// Error catchers
 #[catch(404)]
 pub fn not_found_catcher() -> Json<ApiResponse<()>> {
     Json(ApiResponse {
         success: false,
         data: None,
-        message: Some("Resource not found".to_string()),
+        message: Some("The requested resource was not found.".to_string()),
     })
 }
 
@@ -297,10 +347,11 @@ pub fn bad_request_catcher() -> Json<ApiResponse<()>> {
     Json(ApiResponse {
         success: false,
         data: None,
-        message: Some("Bad request".to_string()),
+        message: Some("Bad request. Please check your input.".to_string()),
     })
 }
 
+// Function to get all routes
 pub fn get_routes() -> Vec<Route> {
     routes![
         create_payment_endpoint,
@@ -309,8 +360,13 @@ pub fn get_routes() -> Vec<Route> {
         get_payment_endpoint,
         get_payment_by_transaction_endpoint,
         get_all_payments_endpoint,
-        delete_payment_endpoint,
+        delete_payment_endpoint
     ]
+}
+
+// Function to get all catchers
+pub fn get_catchers() -> Vec<rocket::Catcher> {
+    catchers![not_found_catcher, bad_request_catcher]
 }
 
 #[cfg(test)]
@@ -539,7 +595,7 @@ mod tests {
         rocket::build()
             .manage(controller)
             .mount("/payments", get_routes())
-            .register("/", catchers![not_found_catcher, bad_request_catcher])
+            .register("/", get_catchers())
     }
 
     #[test]
