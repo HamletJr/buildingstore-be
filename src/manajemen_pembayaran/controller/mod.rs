@@ -1,5 +1,4 @@
 use rocket::fairing::AdHoc;
-use rocket::routes;
 use std::sync::Arc;
 
 use crate::manajemen_pembayaran::repository::payment_repository_impl::PaymentRepositoryImpl;

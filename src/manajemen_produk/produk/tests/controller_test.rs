@@ -1,6 +1,6 @@
 use rocket::http::{ContentType, Status};
 use rocket::local::asynchronous::Client;
-use rocket::serde::json::{json, Value};
+use rocket::serde::json::{json};
 use crate::manajemen_produk::produk::controller::{
     ApiResponse, ProdukResponse, routes
 };

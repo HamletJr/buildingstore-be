@@ -1,12 +1,11 @@
 #[macro_use] extern crate rocket;
 use rocket_db_pools::Database;
 use rocket_db_pools::sqlx::{self, Row};
-use buildingstore_be::BuildingStoreDB;
+use buildingstore_be::{BuildingStoreDB};
 use dotenvy::dotenv;
 use sqlx::any::install_default_drivers;
 use rocket::State;
 use sqlx::{Any, Pool};
-use rocket_cors::{AllowedOrigins, CorsOptions};
 use rocket_cors::{AllowedOrigins, CorsOptions};
 
 pub mod auth;
@@ -48,16 +47,6 @@ async fn rocket() -> _ {
         .to_cors()
         .expect("Failed to create CORS");
 
-    // CORS Configuration
-    let cors = CorsOptions::default()
-        .allowed_origins(AllowedOrigins::some_exact(&[
-            "http://127.0.0.1:3000",
-            "https://your-production-domain.com",
-        ]))
-        .allow_credentials(true)
-        .to_cors()
-        .expect("Failed to create CORS");
-
     install_default_drivers();
     let database_url = dotenvy::var("DATABASE_URL").expect("DATABASE_URL must be set");
     let db_pool = sqlx::AnyPool::connect(&database_url).await.unwrap();
@@ -65,10 +54,8 @@ async fn rocket() -> _ {
         .run(&db_pool)
         .await
         .expect("Failed to run migrations");    rocket::build()
-        .expect("Failed to run migrations");    rocket::build()
         .manage(reqwest::Client::builder().build().unwrap())
         .manage(db_pool)
-        .attach(cors)
         .attach(cors)
         .attach(BuildingStoreDB::init())
         .attach(auth::controller::route_stage())
