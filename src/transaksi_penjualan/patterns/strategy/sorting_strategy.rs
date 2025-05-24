@@ -1,6 +1,3 @@
-// ====== 2. STRATEGY PATTERN ======
-// transaksi/strategy/sorting_strategy.rs
-
 use crate::transaksi_penjualan::model::transaksi::Transaksi;
 
 pub trait SortingStrategy: Send + Sync {

@@ -1,472 +1,332 @@
 use std::collections::HashMap;
 use std::sync::Arc;
-use sqlx::{Any, Pool};
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use uuid::Uuid;
-use async_trait::async_trait;
 
 use crate::manajemen_pembayaran::model::payment::{Payment, PaymentMethod, Installment};
 use crate::manajemen_pembayaran::enums::payment_status::PaymentStatus;
 use crate::manajemen_pembayaran::repository::payment_repository::PaymentRepository;
-use crate::manajemen_pembayaran::patterns::observer::PaymentSubject;
 use crate::manajemen_pembayaran::service::payment_service::PaymentService;
 
 pub struct PaymentServiceImpl {
     repository: Arc<dyn PaymentRepository>,
-    subject: Arc<PaymentSubject>,
 }
 
 impl PaymentServiceImpl {
-    pub fn new(repository: Arc<dyn PaymentRepository>, subject: Arc<PaymentSubject>) -> Self {
+    pub fn new(repository: Arc<dyn PaymentRepository>) -> Self {
         Self {
             repository,
-            subject,
         }
+    }
+    
+    fn process_payment(&self, amount: f64, transaction_id: &str, method: &PaymentMethod) -> Result<String, String> {
+        println!("Memproses pembayaran {:?} sebesar Rp{} untuk transaksi {}", method, amount, transaction_id);
+        
+        if amount <= 0.0 {
+            return Err("Jumlah pembayaran harus lebih dari 0".to_string());
+        }
+        
+        let payment_id = match method {
+            PaymentMethod::Cash => format!("CASH-{}", Uuid::new_v4()),
+            PaymentMethod::CreditCard => format!("CC-{}", Uuid::new_v4()),
+            PaymentMethod::BankTransfer => format!("BANK-{}", Uuid::new_v4()),
+            PaymentMethod::EWallet => format!("EWALLET-{}", Uuid::new_v4()),
+        };
+        
+        Ok(payment_id)
     }
 }
 
-#[async_trait]
 impl PaymentService for PaymentServiceImpl {
-    async fn create_payment(
+    fn create_payment(
         &self,
-        db: Pool<Any>,
         transaction_id: String,
         amount: f64,
         method: PaymentMethod,
     ) -> Result<Payment, String> {
-        // Ambil koneksi database
-        let conn = match db.acquire().await {
-            Ok(conn) => conn,
-            Err(e) => return Err(format!("Database connection error: {}", e)),
-        };
-        
-        // Buat payment baru
-        let payment_id = format!("PMT-{}", Uuid::new_v4());
+        if self.repository.find_by_transaction_id(&transaction_id).is_some() {
+            return Err(format!("Transaksi {} sudah memiliki pembayaran", transaction_id));
+        }
+
+        let payment_id = self.process_payment(amount, &transaction_id, &method)?;
+
         let payment = Payment {
             id: payment_id,
-            transaction_id,
+            transaction_id: transaction_id,
             amount,
             method,
-            status: PaymentStatus::Pending,
+            status: PaymentStatus::Paid,
             payment_date: Utc::now(),
             installments: Vec::new(),
             due_date: None,
         };
-        
-        // Simpan ke database menggunakan repository
-        match self.repository.save(conn, payment.clone()).await {
-            Ok(saved_payment) => {
-                // Notifikasi observer
-                self.subject.notify(&saved_payment);
-                Ok(saved_payment)
-            },
-            Err(e) => Err(format!("Failed to create payment: {}", e))
-        }
-    }
 
-    async fn update_payment_status(
+        let saved_payment = self.repository.save(payment)?;
+        
+        println!("Payment created for transaction ID {}: {:?}", saved_payment.transaction_id, saved_payment.status);
+        
+        Ok(saved_payment)
+    }
+    
+    fn update_payment_status(
         &self,
-        db: Pool<Any>,
         payment_id: String,
         new_status: PaymentStatus,
         additional_amount: Option<f64>,
     ) -> Result<Payment, String> {
-        // Ambil koneksi database
-        let conn = match db.acquire().await {
-            Ok(conn) => conn,
-            Err(e) => return Err(format!("Database connection error: {}", e)),
-        };
+        let mut payment = self.repository
+            .find_by_id(&payment_id)
+            .ok_or_else(|| format!("Pembayaran dengan ID {} tidak ditemukan", payment_id))?;
+
+        payment.status = new_status.clone();
         
-        // Temukan payment yang ada
-        let payment = match self.repository.find_by_id(conn, &payment_id).await {
-            Ok(payment) => payment,
-            Err(_) => return Err(format!("Payment with ID {} not found", payment_id)),
-        };
-        
-        // Verifikasi bahwa perubahan status diizinkan
-        if payment.status == PaymentStatus::Paid && new_status != PaymentStatus::Paid {
-            return Err("Cannot change status of a paid payment".to_string());
+        if let Some(additional) = additional_amount {
+            if additional <= 0.0 {
+                return Err("Jumlah tambahan harus lebih dari 0".to_string());
+            }
+            payment.amount += additional;
+            
+            if new_status == PaymentStatus::Installment {
+                let installment = Installment {
+                    id: Uuid::new_v4().to_string(),
+                    payment_id: payment_id.to_string(),
+                    amount: additional,
+                    payment_date: Utc::now(),
+                };
+                payment.installments.push(installment);
+            }
         }
         
-        // Dapatkan koneksi baru untuk update
-        let conn = match db.acquire().await {
-            Ok(conn) => conn,
-            Err(e) => return Err(format!("Database connection error: {}", e)),
-        };
+        let updated_payment = self.repository.update(payment)?;
         
-        // Perbarui payment dan tambahkan installment jika diperlukan
-        let mut updated_payment = payment.clone();
-        updated_payment.status = new_status;
+        println!("Payment status updated for ID {}: {:?}", updated_payment.id, updated_payment.status);
         
-        if let Some(amount) = additional_amount {
-            let installment = Installment {
-                date: Utc::now(),
-                amount,
-            };
-            updated_payment.installments.push(installment);
-        }
-        
-        // Update di database
-        match self.repository.update(conn, updated_payment.clone()).await {
-            Ok(saved_payment) => {
-                // Notifikasi observer
-                self.subject.notify(&saved_payment);
-                Ok(saved_payment)
-            },
-            Err(e) => Err(format!("Failed to update payment: {}", e))
-        }
+        Ok(updated_payment)
     }
 
-    async fn delete_payment(&self, db: Pool<Any>, payment_id: String) -> Result<(), String> {
-        // Ambil koneksi database
-        let conn = match db.acquire().await {
-            Ok(conn) => conn,
-            Err(e) => return Err(format!("Database connection error: {}", e)),
-        };
-        
-        // Temukan payment yang ada
-        let payment = match self.repository.find_by_id(conn, &payment_id).await {
-            Ok(payment) => payment,
-            Err(_) => return Err(format!("Payment with ID {} not found", payment_id)),
-        };
-        
-        // Verifikasi aturan bisnis (pembayaran lunas tidak boleh dihapus)
+    fn delete_payment(&self, payment_id: String) -> Result<(), String> {
+        let payment = self.repository
+            .find_by_id(&payment_id)
+            .ok_or_else(|| format!("Pembayaran dengan ID {} tidak ditemukan", payment_id))?;
+            
         if payment.status == PaymentStatus::Paid {
-            return Err("Cannot delete a paid payment".to_string());
+            return Err(format!("Pembayaran dengan ID {} sudah lunas dan tidak dapat dihapus", payment_id));
         }
         
-        // Dapatkan koneksi baru untuk delete
-        let conn = match db.acquire().await {
-            Ok(conn) => conn,
-            Err(e) => return Err(format!("Database connection error: {}", e)),
-        };
+        self.repository.delete(&payment_id)?;
         
-        // Hapus dari database
-        match self.repository.delete(conn, &payment_id).await {
-            Ok(_) => Ok(()),
-            Err(e) => Err(format!("Failed to delete payment: {}", e))
-        }
+        println!("Payment with ID {} deleted", payment_id);
+        
+        Ok(())
     }
 
-    async fn get_payment(&self, db: Pool<Any>, payment_id: &str) -> Result<Payment, String> {
-        // Ambil koneksi database
-        let conn = match db.acquire().await {
-            Ok(conn) => conn,
-            Err(e) => return Err(format!("Database connection error: {}", e)),
-        };
-        
-        // Temukan payment berdasarkan ID
-        match self.repository.find_by_id(conn, payment_id).await {
-            Ok(payment) => Ok(payment),
-            Err(_) => Err(format!("Payment with ID {} not found", payment_id))
-        }
+    fn get_payment(&self, payment_id: &str) -> Option<Payment> {
+        self.repository.find_by_id(payment_id)
     }
 
-    async fn get_payment_by_transaction(&self, db: Pool<Any>, transaction_id: &str) -> Result<Payment, String> {
-        // Ambil koneksi database
-        let conn = match db.acquire().await {
-            Ok(conn) => conn,
-            Err(e) => return Err(format!("Database connection error: {}", e)),
-        };
-        
-        // Temukan payment berdasarkan transaction ID
-        match self.repository.find_by_transaction_id(conn, transaction_id).await {
-            Ok(payment) => Ok(payment),
-            Err(_) => Err(format!("Payment with transaction ID {} not found", transaction_id))
-        }
+    fn get_payment_by_transaction(&self, transaction_id: &str) -> Option<Payment> {
+        self.repository.find_by_transaction_id(transaction_id)
     }
 
-    async fn get_all_payments(&self, db: Pool<Any>, filters: Option<HashMap<String, String>>) -> Result<Vec<Payment>, String> {
-        // Ambil koneksi database
-        let conn = match db.acquire().await {
-            Ok(conn) => conn,
-            Err(e) => return Err(format!("Database connection error: {}", e)),
-        };
-        
-        // Dapatkan semua payment dengan filter opsional
-        match self.repository.find_all(conn, filters).await {
-            Ok(payments) => Ok(payments),
-            Err(e) => Err(format!("Failed to get payments: {}", e))
-        }
+    fn get_all_payments(&self, filters: Option<HashMap<String, String>>) -> Vec<Payment> {
+        self.repository.find_all(filters)
     }
 
-    async fn add_installment(&self, db: Pool<Any>, payment_id: &str, amount: f64) -> Result<Payment, String> {
-        // Cari payment untuk memastikan bahwa itu valid
-        let payment = match self.get_payment(db.clone(), payment_id).await {
-            Ok(payment) => payment,
-            Err(e) => return Err(e),
-        };
+    fn add_installment(&self, payment_id: &str, amount: f64) -> Result<Payment, String> {
+        if amount <= 0.0 {
+            return Err("Jumlah cicilan harus lebih dari 0".to_string());
+        }
         
-        // Verifikasi aturan bisnis (hanya pembayaran cicilan yang boleh ditambahkan installment)
+        let mut payment = self.repository
+            .find_by_id(payment_id)
+            .ok_or_else(|| format!("Pembayaran dengan ID {} tidak ditemukan", payment_id))?;
+            
         if payment.status != PaymentStatus::Installment {
-            return Err("Can only add installments to a payment with Installment status".to_string());
+            return Err(format!("Pembayaran dengan ID {} bukan cicilan", payment_id));
         }
         
-        // Tambahkan installment dengan update_payment_status
-        self.update_payment_status(db, payment_id.to_string(), PaymentStatus::Installment, Some(amount)).await
+        let installment = Installment {
+            id: Uuid::new_v4().to_string(),
+            payment_id: payment_id.to_string(),
+            amount,
+            payment_date: Utc::now(),
+        };
+        
+        payment.installments.push(installment);
+        
+        let total_installments: f64 = payment.installments.iter().map(|i| i.amount).sum();
+        
+        if total_installments >= payment.amount {
+            payment.status = PaymentStatus::Paid;
+        }
+        
+        let updated_payment = self.repository.update(payment)?;
+        
+        println!("Added installment to payment ID {}, new status: {:?}", payment_id, updated_payment.status);
+        
+        Ok(updated_payment)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sqlx::any::{AnyPoolOptions, install_default_drivers};
-    use rocket::async_test;
+    use uuid::Uuid;
+    use std::collections::HashMap;
+    
     use crate::manajemen_pembayaran::repository::payment_repository_impl::PaymentRepositoryImpl;
-    use crate::manajemen_pembayaran::patterns::observer::{PaymentObserver, Observer};
-    
-    struct TestObserver {
-        payment_id: Option<String>,
-    }
-    
-    impl TestObserver {
-        fn new() -> Self {
-            Self { payment_id: None }
-        }
-    }
-    
-    impl Observer for TestObserver {
-        fn update(&mut self, payment: &Payment) {
-            self.payment_id = Some(payment.id.clone());
-        }
-    }
-    
-    async fn setup() -> (PaymentServiceImpl, Pool<Any>) {
-        install_default_drivers();
-        let db = AnyPoolOptions::new()
-            .max_connections(1)
-            .connect("sqlite::memory:")
-            .await
-            .unwrap();
-        
-        // Create payments table for testing
-        sqlx::query("
-            CREATE TABLE IF NOT EXISTS payments (
-                id TEXT PRIMARY KEY,
-                transaction_id TEXT NOT NULL,
-                amount REAL NOT NULL,
-                payment_method TEXT NOT NULL,
-                status TEXT NOT NULL,
-                payment_date TIMESTAMP NOT NULL,
-                due_date TIMESTAMP
-            )
-        ")
-        .execute(&db)
-        .await
-        .unwrap();
-        
+
+    #[test]
+    fn test_create_payment() {
         let repository = Arc::new(PaymentRepositoryImpl::new());
-        let subject = Arc::new(PaymentSubject::new());
-        let service = PaymentServiceImpl::new(repository, subject);
+        let service: Arc<dyn PaymentService> = Arc::new(PaymentServiceImpl::new(repository.clone()));
         
-        (service, db)
-    }
-    
-    #[async_test]
-    async fn test_create_payment() {
-        let (service, db) = setup().await;
         let transaction_id = format!("TRX-{}", Uuid::new_v4());
         
-        let result = service.create_payment(
-            db.clone(), 
-            transaction_id.clone(), 
-            1000.0, 
-            PaymentMethod::Cash
-        ).await;
+        let result = service.create_payment(transaction_id.clone(), 1000.0, PaymentMethod::Cash);
         
         assert!(result.is_ok());
         let payment = result.unwrap();
-        
         assert_eq!(payment.transaction_id, transaction_id);
         assert_eq!(payment.amount, 1000.0);
         assert_eq!(payment.method, PaymentMethod::Cash);
-        assert_eq!(payment.status, PaymentStatus::Pending);
+        assert_eq!(payment.status, PaymentStatus::Paid);
     }
-    
-    #[async_test]
-    async fn test_update_payment_status() {
-        let (service, db) = setup().await;
+
+    #[test]
+    fn test_create_payment_with_existing_transaction() {
+        let repository = Arc::new(PaymentRepositoryImpl::new());
+        let service: Arc<dyn PaymentService> = Arc::new(PaymentServiceImpl::new(repository.clone()));
+        
         let transaction_id = format!("TRX-{}", Uuid::new_v4());
         
-        // Create a payment first
-        let payment = service.create_payment(
-            db.clone(), 
-            transaction_id.clone(), 
-            1000.0, 
-            PaymentMethod::Cash
-        ).await.unwrap();
+        service.create_payment(transaction_id.clone(), 1000.0, PaymentMethod::Cash).unwrap();
         
-        // Update status to Installment
+        let result = service.create_payment(transaction_id.clone(), 2000.0, PaymentMethod::CreditCard);
+        
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_update_payment_status() {
+        let repository = Arc::new(PaymentRepositoryImpl::new());
+        let service: Arc<dyn PaymentService> = Arc::new(PaymentServiceImpl::new(repository.clone()));
+        
+        let transaction_id = format!("TRX-{}", Uuid::new_v4());
+        let payment = service.create_payment(transaction_id.clone(), 1000.0, PaymentMethod::Cash).unwrap();
+        
         let result = service.update_payment_status(
-            db.clone(),
             payment.id.clone(),
             PaymentStatus::Installment,
-            Some(300.0)
-        ).await;
+            Some(500.0)
+        );
         
         assert!(result.is_ok());
         let updated_payment = result.unwrap();
-        
         assert_eq!(updated_payment.status, PaymentStatus::Installment);
-        assert_eq!(updated_payment.installments.len(), 1);
-        assert_eq!(updated_payment.installments[0].amount, 300.0);
+    }
+
+    #[test]
+    fn test_add_installment() {
+        let repository = Arc::new(PaymentRepositoryImpl::new());
+        let service: Arc<dyn PaymentService> = Arc::new(PaymentServiceImpl::new(repository.clone()));
         
-        // Add another installment
-        let result = service.add_installment(
-            db.clone(),
-            &payment.id,
-            400.0
-        ).await;
+        let transaction_id = format!("TRX-{}", Uuid::new_v4());
+        let payment = service.create_payment(transaction_id.clone(), 1000.0, PaymentMethod::Cash).unwrap();
+        
+        let payment = service.update_payment_status(
+            payment.id.clone(),
+            PaymentStatus::Installment,
+            None
+        ).unwrap();
+        
+        let result = service.add_installment(&payment.id, 400.0);
         
         assert!(result.is_ok());
         let payment_with_installment = result.unwrap();
+        assert_eq!(payment_with_installment.installments.len(), 1);
         
-        assert_eq!(payment_with_installment.installments.len(), 2);
-        assert_eq!(payment_with_installment.installments[1].amount, 400.0);
-    }
-    
-    #[async_test]
-    async fn test_get_payment() {
-        let (service, db) = setup().await;
-        let transaction_id = format!("TRX-{}", Uuid::new_v4());
-        
-        // Create a payment first
-        let payment = service.create_payment(
-            db.clone(), 
-            transaction_id.clone(), 
-            1000.0, 
-            PaymentMethod::Cash
-        ).await.unwrap();
-        
-        // Get the payment by ID
-        let result = service.get_payment(db.clone(), &payment.id).await;
+        let result = service.add_installment(&payment.id, 600.0);
         
         assert!(result.is_ok());
-        let found_payment = result.unwrap();
+        let completed_payment = result.unwrap();
+        assert_eq!(completed_payment.installments.len(), 2);
+        assert_eq!(completed_payment.status, PaymentStatus::Paid);
         
+        let result = service.add_installment(&payment.id, 100.0);
+        
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_get_payment() {
+        let repository = Arc::new(PaymentRepositoryImpl::new());
+        let service: Arc<dyn PaymentService> = Arc::new(PaymentServiceImpl::new(repository.clone()));
+        
+        let transaction_id = format!("TRX-{}", Uuid::new_v4());
+        let payment = service.create_payment(transaction_id.clone(), 1000.0, PaymentMethod::Cash).unwrap();
+        
+        let result = service.get_payment(&payment.id);
+        
+        assert!(result.is_some());
+        let found_payment = result.unwrap();
         assert_eq!(found_payment.id, payment.id);
+        
+        let result = service.get_payment_by_transaction(&transaction_id);
+        
+        assert!(result.is_some());
+        let found_payment = result.unwrap();
         assert_eq!(found_payment.transaction_id, transaction_id);
     }
-    
-    #[async_test]
-    async fn test_get_all_payments() {
-        let (service, db) = setup().await;
+
+    #[test]
+    fn test_get_all_payments() {
+        let repository = Arc::new(PaymentRepositoryImpl::new());
+        let service: Arc<dyn PaymentService> = Arc::new(PaymentServiceImpl::new(repository.clone()));
         
-        // Create two payments
-        let p1 = service.create_payment(
-            db.clone(), 
-            format!("TRX-1-{}", Uuid::new_v4()), 
-            1000.0, 
-            PaymentMethod::Cash
-        ).await.unwrap();
+        service.create_payment(format!("TRX-1-{}", Uuid::new_v4()), 1000.0, PaymentMethod::Cash).unwrap();
         
-        let p2 = service.create_payment(
-            db.clone(), 
-            format!("TRX-2-{}", Uuid::new_v4()), 
-            2000.0, 
-            PaymentMethod::CreditCard
-        ).await.unwrap();
+        let p2 = service.create_payment(format!("TRX-2-{}", Uuid::new_v4()), 2000.0, PaymentMethod::CreditCard).unwrap();
+        service.update_payment_status(p2.id, PaymentStatus::Installment, None).unwrap();
         
-        // Set p1 to Paid status
-        service.update_payment_status(
-            db.clone(),
-            p1.id.clone(),
-            PaymentStatus::Paid,
-            None
-        ).await.unwrap();
-        
-        // Get all payments
-        let result = service.get_all_payments(db.clone(), None).await;
-        
-        assert!(result.is_ok());
-        let all_payments = result.unwrap();
+        let all_payments = service.get_all_payments(None);
         
         assert_eq!(all_payments.len(), 2);
         
-        // Filter for only paid payments
         let mut filters = HashMap::new();
         filters.insert("status".to_string(), "LUNAS".to_string());
-        
-        let result = service.get_all_payments(db.clone(), Some(filters)).await;
-        
-        assert!(result.is_ok());
-        let paid_payments = result.unwrap();
+        let paid_payments = service.get_all_payments(Some(filters));
         
         assert_eq!(paid_payments.len(), 1);
         assert_eq!(paid_payments[0].status, PaymentStatus::Paid);
     }
-    
-    #[async_test]
-    async fn test_delete_payment() {
-        let (service, db) = setup().await;
+
+    #[test]
+    fn test_delete_payment() {
+        let repository = Arc::new(PaymentRepositoryImpl::new());
+        let service: Arc<dyn PaymentService> = Arc::new(PaymentServiceImpl::new(repository.clone()));
+        
         let transaction_id = format!("TRX-{}", Uuid::new_v4());
+        let payment = service.create_payment(transaction_id.clone(), 1000.0, PaymentMethod::Cash).unwrap();
+        let payment = service.update_payment_status(payment.id.clone(), PaymentStatus::Installment, None).unwrap();
         
-        // Create a payment first
-        let payment = service.create_payment(
-            db.clone(), 
-            transaction_id.clone(), 
-            1000.0, 
-            PaymentMethod::Cash
-        ).await.unwrap();
-        
-        // Delete the payment
-        let result = service.delete_payment(db.clone(), payment.id.clone()).await;
+        let result = service.delete_payment(payment.id.clone());
         
         assert!(result.is_ok());
-        
-        // Attempt to get the deleted payment
-        let result = service.get_payment(db.clone(), &payment.id).await;
-        
-        assert!(result.is_err());
+        assert!(service.get_payment(&payment.id).is_none());
     }
-    
-    #[async_test]
-    async fn test_delete_paid_payment() {
-        let (service, db) = setup().await;
-        let transaction_id = format!("TRX-{}", Uuid::new_v4());
-        
-        // Create a payment first
-        let payment = service.create_payment(
-            db.clone(), 
-            transaction_id.clone(), 
-            1000.0, 
-            PaymentMethod::Cash
-        ).await.unwrap();
-        
-        // Set status to Paid
-        service.update_payment_status(
-            db.clone(),
-            payment.id.clone(),
-            PaymentStatus::Paid,
-            None
-        ).await.unwrap();
-        
-        // Try to delete the paid payment
-        let result = service.delete_payment(db.clone(), payment.id.clone()).await;
-        
-        // Should fail because you can't delete paid payments
-        assert!(result.is_err());
-    }
-    
-    #[async_test]
-    async fn test_observer_pattern() {
-        let (service, db) = setup().await;
-        
-        let test_observer = Arc::new(std::sync::Mutex::new(TestObserver::new()));
-        service.subject.attach(test_observer.clone());
+
+    #[test]
+    fn test_delete_paid_payment() {
+        let repository = Arc::new(PaymentRepositoryImpl::new());
+        let service: Arc<dyn PaymentService> = Arc::new(PaymentServiceImpl::new(repository.clone()));
         
         let transaction_id = format!("TRX-{}", Uuid::new_v4());
+        let payment = service.create_payment(transaction_id.clone(), 1000.0, PaymentMethod::Cash).unwrap();
         
-        // Create a payment
-        let payment = service.create_payment(
-            db.clone(), 
-            transaction_id.clone(), 
-            1000.0, 
-            PaymentMethod::Cash
-        ).await.unwrap();
+        let result = service.delete_payment(payment.id.clone());
         
-        // Observer should be notified
-        let observer = test_observer.lock().unwrap();
-        assert_eq!(observer.payment_id, Some(payment.id));
+        assert!(result.is_err());
+        assert!(service.get_payment(&payment.id).is_some());
     }
 }

@@ -1,13 +1,17 @@
-CREATE TABLE IF NOT EXISTS payments (
+CREATE TABLE payments (
     id TEXT PRIMARY KEY,
     transaction_id TEXT NOT NULL,
     amount REAL NOT NULL,
-    payment_method TEXT NOT NULL,
+    method TEXT NOT NULL,
     status TEXT NOT NULL,
-    payment_date TIMESTAMP NOT NULL,
-    due_date TIMESTAMP
+    payment_date TEXT NOT NULL,
+    due_date TEXT
 );
 
-CREATE INDEX IF NOT EXISTS idx_payments_transaction_id ON payments(transaction_id);
-CREATE INDEX IF NOT EXISTS idx_payments_status ON payments(status);
-CREATE INDEX IF NOT EXISTS idx_payments_method ON payments(payment_method);
+CREATE TABLE installments (
+    id TEXT PRIMARY KEY,
+    payment_id TEXT NOT NULL,
+    amount REAL NOT NULL,
+    payment_date TEXT NOT NULL,
+    FOREIGN KEY (payment_id) REFERENCES payments(id) ON DELETE CASCADE
+);
