@@ -4,6 +4,7 @@ use rocket::http::Status;
 use rocket::serde::json::Json;
 use sqlx::{Any, Pool};
 use rocket::serde::{Serialize, Deserialize};
+use autometrics::autometrics;
 
 use crate::auth::guards::auth::AuthenticatedUser;
 use crate::manajemen_pelanggan::model::pelanggan::{Pelanggan, PelangganForm};
@@ -15,6 +16,7 @@ pub struct Response {
     message: String,
 }
 
+#[autometrics]
 #[get("/pelanggan?<sort>&<filter>&<keyword>")]
 pub async fn get_all_pelanggan(_user: AuthenticatedUser, db: &State<Pool<Any>>, sort: Option<String>, filter: Option<String>, keyword: Option<String>) -> Result<Json<Vec<Pelanggan>>, (Status, Json<Response>)> {
     let pelanggan = PelangganService::get_all_pelanggan(db.inner().clone()).await;
@@ -33,6 +35,7 @@ pub async fn get_all_pelanggan(_user: AuthenticatedUser, db: &State<Pool<Any>>, 
     Ok(Json(pelanggan))
 }
 
+#[autometrics]
 #[post("/pelanggan", data = "<pelanggan>")]
 pub async fn create_pelanggan(_user: AuthenticatedUser, db: &State<Pool<Any>>, pelanggan: Json<PelangganForm>) -> Result<Json<Response>, (Status, Json<Response>)> {
     let pelanggan = Pelanggan::new(pelanggan.nama.clone(), pelanggan.alamat.clone(), pelanggan.no_telp.clone());
@@ -43,12 +46,14 @@ pub async fn create_pelanggan(_user: AuthenticatedUser, db: &State<Pool<Any>>, p
     Ok(Json(Response { message: "Pelanggan created successfully".to_string() }))
 }
 
+#[autometrics]
 #[get("/pelanggan/<id>")]
 pub async fn get_pelanggan_by_id(_user: AuthenticatedUser, db: &State<Pool<Any>>, id: i32) -> Result<Json<Pelanggan>, Status> {
     let pelanggan = PelangganService::get_pelanggan_by_id(db.inner().clone(), id).await.map_err(|_| Status::NotFound)?;
     Ok(Json(pelanggan))
 }
 
+#[autometrics]
 #[patch("/pelanggan/<id>", data = "<pelanggan>")]
 pub async fn update_pelanggan(_user: AuthenticatedUser, db: &State<Pool<Any>>, id: i32, pelanggan: Json<Pelanggan>) -> (Status, Json<Response>) {
     if pelanggan.id != id {
@@ -61,6 +66,7 @@ pub async fn update_pelanggan(_user: AuthenticatedUser, db: &State<Pool<Any>>, i
     }
 }
 
+#[autometrics]
 #[delete("/pelanggan/<id>")]
 pub async fn delete_pelanggan(_user: AuthenticatedUser, db: &State<Pool<Any>>, id: i32) -> (Status, Json<Response>) {
     let res = PelangganService::delete_pelanggan(db.inner().clone(), id).await;
