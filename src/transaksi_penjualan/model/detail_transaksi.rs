@@ -1,3 +1,5 @@
+// transaksi/model/detail_transaksi.rs
+
 use rocket::serde::{Serialize, Deserialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

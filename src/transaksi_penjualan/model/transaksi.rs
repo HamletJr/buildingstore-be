@@ -1,3 +1,4 @@
+// transaksi/model/transaksi.rs
 use chrono::{Utc, NaiveDateTime};
 use rocket::serde::{Serialize, Deserialize};
 use crate::transaksi_penjualan::enums::status_transaksi::StatusTransaksi;
