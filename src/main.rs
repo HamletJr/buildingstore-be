@@ -12,6 +12,8 @@ use autometrics::prometheus_exporter;
 pub mod auth;
 pub mod manajemen_produk;
 pub mod manajemen_pelanggan;
+pub mod transaksi_penjualan;
+pub mod manajemen_pembayaran;
 
 #[get("/")]
 fn index() -> &'static str {
@@ -63,8 +65,8 @@ async fn rocket() -> _ {
     sqlx::migrate!()
         .run(&db_pool)
         .await
-        .expect("Failed to run migrations");
-
+        .expect("Failed to run migrations");    
+  
     rocket::build()
         .manage(reqwest::Client::builder().build().unwrap())
         .manage(db_pool)
@@ -73,5 +75,8 @@ async fn rocket() -> _ {
         .attach(BuildingStoreDB::init())
         .attach(auth::controller::route_stage())
         .attach(manajemen_pelanggan::controller::route_stage())
+        .attach(manajemen_pembayaran::controller::route_stage())
+        .attach(manajemen_pelanggan::controller::route_stage())
+        .attach(transaksi_penjualan::controller::route_stage())
         .mount("/", routes![index, test_db, metrics])
 }

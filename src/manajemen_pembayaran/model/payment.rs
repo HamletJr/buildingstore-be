@@ -8,6 +8,7 @@ pub enum PaymentMethod {
     CreditCard,
     BankTransfer,
     EWallet,
+    Transfer,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
