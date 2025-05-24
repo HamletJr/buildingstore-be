@@ -29,7 +29,6 @@ mod tests {
 
     #[test]
     fn test_payment_status_from_string() {
-        // Valid status
         let paid_status = PaymentStatus::from_string("LUNAS");
         assert!(paid_status.is_some());
         assert_eq!(paid_status.unwrap(), PaymentStatus::Paid);
@@ -38,12 +37,10 @@ mod tests {
         assert!(installment_status.is_some());
         assert_eq!(installment_status.unwrap(), PaymentStatus::Installment);
 
-        // Case insensitive
         let lowercase_status = PaymentStatus::from_string("lunas");
         assert!(lowercase_status.is_some());
         assert_eq!(lowercase_status.unwrap(), PaymentStatus::Paid);
 
-        // Invalid status
         let invalid_status = PaymentStatus::from_string("INVALID");
         assert!(invalid_status.is_none());
     }
@@ -56,7 +53,6 @@ mod tests {
 
     #[test]
     fn test_payment_status_case_variations() {
-        // Test different case variations
         let test_cases = vec![
             ("LUNAS", Some(PaymentStatus::Paid)),
             ("lunas", Some(PaymentStatus::Paid)),
@@ -133,14 +129,12 @@ mod tests {
         let paid_status = PaymentStatus::Paid;
         let installment_status = PaymentStatus::Installment;
 
-        // Test serialization
         let paid_json = serde_json::to_string(&paid_status).unwrap();
         let installment_json = serde_json::to_string(&installment_status).unwrap();
 
         assert_eq!(paid_json, "\"Paid\"");
         assert_eq!(installment_json, "\"Installment\"");
 
-        // Test deserialization
         let deserialized_paid: PaymentStatus = serde_json::from_str(&paid_json).unwrap();
         let deserialized_installment: PaymentStatus = serde_json::from_str(&installment_json).unwrap();
 
@@ -179,13 +173,11 @@ mod tests {
 
     #[test]
     fn test_payment_status_all_variants() {
-        // Ensure we test all variants of the enum
         let all_statuses = vec![PaymentStatus::Paid, PaymentStatus::Installment];
         
         assert_eq!(all_statuses.len(), 2);
         
         for status in all_statuses {
-            // Each status should convert to string and back
             let string_repr = status.to_string();
             let parsed_back = PaymentStatus::from_string(&string_repr);
             assert_eq!(parsed_back, Some(status));

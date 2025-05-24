@@ -263,16 +263,12 @@ impl PembayaranRepository {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::{DateTime, Utc};
+    use chrono::{Utc};
     use uuid::Uuid;
     use std::collections::HashMap;
 
     #[test]
     fn test_parse_row_to_payment_success() {
-        // Test akan dilakukan dengan mock data
-        // Karena parse_row_to_payment adalah function internal yang membutuhkan AnyRow
-        // Test ini menguji logika parsing payment method dan status
-        
         let payment_method_cash = match "CASH" {
             "CASH" => PaymentMethod::Cash,
             "CREDIT_CARD" => PaymentMethod::CreditCard,
@@ -379,10 +375,9 @@ mod tests {
         let now = Utc::now();
         let formatted = now.naive_utc().to_string();
         
-        // Test that the formatted string is not empty and contains expected components
         assert!(!formatted.is_empty());
-        assert!(formatted.contains("-")); // Date separators
-        assert!(formatted.contains(":")); // Time separators
+        assert!(formatted.contains("-")); 
+        assert!(formatted.contains(":")); 
     }
 
     #[test]

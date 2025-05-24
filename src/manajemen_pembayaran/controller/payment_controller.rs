@@ -347,8 +347,7 @@ pub fn bad_request_catcher() -> Json<ApiResponse<()>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::{DateTime, Utc};
-    use uuid::Uuid;
+    use chrono::{Utc};
     
     #[test]
     fn test_api_response_serialization() {
@@ -589,7 +588,7 @@ mod tests {
         let payment_id = payment_service.generate_payment_id();
         
         assert!(payment_id.starts_with("PMT-"));
-        assert_eq!(payment_id.len(), 40); // "PMT-" + 36 char UUID
+        assert_eq!(payment_id.len(), 40);
     }
 
     #[test]

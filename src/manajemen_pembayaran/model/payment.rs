@@ -50,7 +50,6 @@ mod tests {
     use chrono::Utc;
     use uuid::Uuid;
 
-    // Test PaymentMethod display
     #[test]
     fn test_payment_method_display() {
         assert_eq!(PaymentMethod::Cash.to_string(), "CASH");

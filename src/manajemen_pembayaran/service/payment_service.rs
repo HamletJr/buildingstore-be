@@ -125,16 +125,14 @@ impl PaymentService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::{DateTime, Utc};
+    use chrono::{Utc};
     use uuid::Uuid;
     use std::collections::HashMap;
 
     #[test]
     fn test_payment_service_creation() {
         let service = PaymentService::new();
-        // Test that service is created successfully
-        // Since PaymentService is a unit struct, we just verify it can be instantiated
-        assert!(std::mem::size_of_val(&service) >= 0);
+        assert_eq!(std::mem::size_of_val(&service), 0);
     }
 
     #[test]
@@ -145,8 +143,8 @@ mod tests {
 
         assert!(id1.starts_with("PMT-"));
         assert!(id2.starts_with("PMT-"));
-        assert_ne!(id1, id2); // Each generated ID should be unique
-        assert_eq!(id1.len(), 40); // "PMT-" + 36 character UUID
+        assert_ne!(id1, id2);
+        assert_eq!(id1.len(), 40);
     }
 
     #[test]
@@ -215,7 +213,6 @@ mod tests {
         let not_found_error = PaymentError::NotFound("Payment not found".to_string());
         let invalid_input_error = PaymentError::InvalidInput("Invalid payment data".to_string());
 
-        // Test that different error types can be created
         match db_error {
             PaymentError::DatabaseError(msg) => assert_eq!(msg, "Database connection failed"),
             _ => panic!("Expected DatabaseError"),
@@ -234,7 +231,6 @@ mod tests {
 
     #[test]
     fn test_installment_validation_logic() {
-        // Test the business logic that would be used in add_installment
         let payment = Payment {
             id: "payment-123".to_string(),
             transaction_id: "txn-456".to_string(),
@@ -246,8 +242,7 @@ mod tests {
             due_date: None,
         };
 
-        // Valid case: payment status is INSTALLMENT
-        assert_eq!(payment.status, PaymentStatus::Installment);        // Invalid case: payment status is not INSTALLMENT
+        assert_eq!(payment.status, PaymentStatus::Installment);
         let invalid_payment = Payment {
             status: PaymentStatus::Paid,
             ..payment
@@ -280,12 +275,10 @@ mod tests {
         filters.insert("status".to_string(), "COMPLETED".to_string());
         filters.insert("method".to_string(), "CASH".to_string());
 
-        // Test that filters can be constructed and accessed
         assert_eq!(filters.get("status"), Some(&"COMPLETED".to_string()));
         assert_eq!(filters.get("method"), Some(&"CASH".to_string()));
         assert_eq!(filters.get("nonexistent"), None);
 
-        // Test empty filters
         let empty_filters: Option<HashMap<String, String>> = None;
         assert!(empty_filters.is_none());
     }
