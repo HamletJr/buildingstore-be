@@ -1,6 +1,7 @@
 use chrono::{DateTime, Utc};
 use crate::manajemen_pembayaran::enums::payment_status::PaymentStatus;
 use serde::{Serialize, Deserialize};
+use std::fmt;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum PaymentMethod {
@@ -10,7 +11,19 @@ pub enum PaymentMethod {
     EWallet,
 }
 
+impl fmt::Display for PaymentMethod {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PaymentMethod::Cash => write!(f, "CASH"),
+            PaymentMethod::CreditCard => write!(f, "CREDIT_CARD"),
+            PaymentMethod::BankTransfer => write!(f, "BANK_TRANSFER"),
+            PaymentMethod::EWallet => write!(f, "E_WALLET"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(crate = "rocket::serde")]
 pub struct Payment {
     pub id: String,
     pub transaction_id: String,
@@ -23,6 +36,7 @@ pub struct Payment {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(crate = "rocket::serde")]
 pub struct Installment {
     pub id: String,
     pub payment_id: String,
