@@ -36,7 +36,7 @@ pub async fn get_user(user: AuthenticatedUser) -> Json<AuthenticatedUser> {
 }
 
 #[post("/login", data = "<form>")]
-pub async fn login(form: Json<AuthForm>, cookies: &CookieJar<'_>, db: &State<Pool<Any>>) -> Status {
+pub async fn login(form: Json<AuthForm>, cookies: &CookieJar<'_>, db: &State<Pool<Any>>, production: &State<bool>) -> Status {
     let username = form.username.clone();
     let password = form.password.clone();
 
@@ -45,6 +45,10 @@ pub async fn login(form: Json<AuthForm>, cookies: &CookieJar<'_>, db: &State<Poo
         Ok(session) => {
             let mut cookie = Cookie::new("session_key", session.session_key);
             cookie.set_same_site(SameSite::None);
+            cookie.set_partitioned(true);
+            if *production.inner() {
+                cookie.set_domain("koyeb.app");
+            }
             cookies.add_private(cookie);
             Status::Ok
         },
@@ -118,9 +122,12 @@ mod test {
         let admin_user = User::new(ADMIN_USERNAME.to_string(), ADMIN_PASSWORD.to_string(), true);
         AuthService::register_user(db.clone(), admin_user).await.unwrap();
 
+        let production = false;
+
         let rocket = rocket::build()
             .manage(reqwest::Client::builder().build().unwrap())
             .manage(db.clone())
+            .manage(production)
             .mount("/", routes![login, register, logout, change_password, get_user]);
 
         rocket
