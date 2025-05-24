@@ -316,6 +316,7 @@ pub fn get_routes() -> Vec<Route> {
 mod tests {
     use super::*;
     use std::sync::Arc;
+    use rocket::catchers;
     use uuid::Uuid;
 
     use crate::manajemen_pembayaran::repository::payment_repository_impl::PaymentRepositoryImpl;

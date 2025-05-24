@@ -4,7 +4,9 @@ use rocket::http::Status;
 use rocket::serde::json::Json;
 use sqlx::{Any, Pool};
 use rocket::serde::{Serialize, Deserialize};
+use autometrics::autometrics;
 
+use crate::auth::guards::auth::AuthenticatedUser;
 use crate::manajemen_pelanggan::model::pelanggan::{Pelanggan, PelangganForm};
 use crate::manajemen_pelanggan::service::pelanggan::PelangganService;
 
@@ -14,8 +16,9 @@ pub struct Response {
     message: String,
 }
 
+#[autometrics]
 #[get("/pelanggan?<sort>&<filter>&<keyword>")]
-pub async fn get_all_pelanggan(db: &State<Pool<Any>>, sort: Option<String>, filter: Option<String>, keyword: Option<String>) -> Result<Json<Vec<Pelanggan>>, (Status, Json<Response>)> {
+pub async fn get_all_pelanggan(_user: AuthenticatedUser, db: &State<Pool<Any>>, sort: Option<String>, filter: Option<String>, keyword: Option<String>) -> Result<Json<Vec<Pelanggan>>, (Status, Json<Response>)> {
     let pelanggan = PelangganService::get_all_pelanggan(db.inner().clone()).await;
     if pelanggan.is_err() {
         return Err((Status::InternalServerError, Json(Response { message: "Failed to fetch pelanggan".to_string() })));
@@ -32,8 +35,9 @@ pub async fn get_all_pelanggan(db: &State<Pool<Any>>, sort: Option<String>, filt
     Ok(Json(pelanggan))
 }
 
+#[autometrics]
 #[post("/pelanggan", data = "<pelanggan>")]
-pub async fn create_pelanggan(db: &State<Pool<Any>>, pelanggan: Json<PelangganForm>) -> Result<Json<Response>, (Status, Json<Response>)> {
+pub async fn create_pelanggan(_user: AuthenticatedUser, db: &State<Pool<Any>>, pelanggan: Json<PelangganForm>) -> Result<Json<Response>, (Status, Json<Response>)> {
     let pelanggan = Pelanggan::new(pelanggan.nama.clone(), pelanggan.alamat.clone(), pelanggan.no_telp.clone());
     let res = PelangganService::create_pelanggan(db.inner().clone(), &pelanggan).await;
     if res.is_err() {
@@ -42,14 +46,16 @@ pub async fn create_pelanggan(db: &State<Pool<Any>>, pelanggan: Json<PelangganFo
     Ok(Json(Response { message: "Pelanggan created successfully".to_string() }))
 }
 
+#[autometrics]
 #[get("/pelanggan/<id>")]
-pub async fn get_pelanggan_by_id(db: &State<Pool<Any>>, id: i32) -> Result<Json<Pelanggan>, Status> {
+pub async fn get_pelanggan_by_id(_user: AuthenticatedUser, db: &State<Pool<Any>>, id: i32) -> Result<Json<Pelanggan>, Status> {
     let pelanggan = PelangganService::get_pelanggan_by_id(db.inner().clone(), id).await.map_err(|_| Status::NotFound)?;
     Ok(Json(pelanggan))
 }
 
+#[autometrics]
 #[patch("/pelanggan/<id>", data = "<pelanggan>")]
-pub async fn update_pelanggan(db: &State<Pool<Any>>, id: i32, pelanggan: Json<Pelanggan>) -> (Status, Json<Response>) {
+pub async fn update_pelanggan(_user: AuthenticatedUser, db: &State<Pool<Any>>, id: i32, pelanggan: Json<Pelanggan>) -> (Status, Json<Response>) {
     if pelanggan.id != id {
         return (Status::BadRequest, Json(Response { message: "Invalid data".to_string() }));
     }
@@ -60,8 +66,9 @@ pub async fn update_pelanggan(db: &State<Pool<Any>>, id: i32, pelanggan: Json<Pe
     }
 }
 
+#[autometrics]
 #[delete("/pelanggan/<id>")]
-pub async fn delete_pelanggan(db: &State<Pool<Any>>, id: i32) -> (Status, Json<Response>) {
+pub async fn delete_pelanggan(_user: AuthenticatedUser, db: &State<Pool<Any>>, id: i32) -> (Status, Json<Response>) {
     let res = PelangganService::delete_pelanggan(db.inner().clone(), id).await;
     if res.is_err() {
         return (Status::InternalServerError, Json(Response { message: "Failed to delete pelanggan".to_string() }));
@@ -73,11 +80,17 @@ pub async fn delete_pelanggan(db: &State<Pool<Any>>, id: i32) -> (Status, Json<R
 mod tests {
     use super::*;
     use rocket::local::asynchronous::Client;
-    use rocket::{routes, uri, Rocket, async_test};
+    use rocket::{routes, uri, async_test};
     use sqlx::any::install_default_drivers;
     use crate::manajemen_pelanggan::model::pelanggan::Pelanggan;
+    use crate::auth::model::user::User;
+    use crate::auth::service::auth::AuthService;
+    use crate::auth::controller::auth::*;
 
-    async fn setup() -> Rocket<rocket::Build> {
+    const ADMIN_USERNAME: &str = "admin";
+    const ADMIN_PASSWORD: &str = "admin123";
+
+    async fn setup() -> Client {
         install_default_drivers();
         let db = sqlx::any::AnyPoolOptions::new()
             .max_connections(1)
@@ -90,18 +103,30 @@ mod tests {
             .await
             .unwrap();
 
+        AuthService::register_user(db.clone(), User::new(ADMIN_USERNAME.to_string(), ADMIN_PASSWORD.to_string(), true))
+            .await.unwrap();
+
+        let production = false;
+
         let rocket = rocket::build()
             .manage(db.clone())
+            .manage(production)
             .mount("/", routes![get_all_pelanggan, create_pelanggan, 
-            get_pelanggan_by_id, update_pelanggan, delete_pelanggan]);
+            get_pelanggan_by_id, update_pelanggan, delete_pelanggan,
+            login, register]);
 
-        rocket
+        let client = Client::tracked(rocket).await.expect("Must provide a valid Rocket instance");
+        client.post(uri!(login))
+            .json(&AuthForm { username: ADMIN_USERNAME.to_string(), password: ADMIN_PASSWORD.to_string() })
+            .dispatch()
+            .await;
+
+        client
     }
 
     #[async_test]
     async fn test_create_pelanggan() {
-        let rocket = setup().await;
-        let client = Client::tracked(rocket).await.expect("Must provide a valid Rocket instance");
+        let client = setup().await;
         let new_pelanggan = PelangganForm { 
             nama: "Castorice".to_string(), 
             alamat: "Styxia".to_string(), 
@@ -118,8 +143,7 @@ mod tests {
 
     #[async_test]
     async fn test_get_all_pelanggan() {
-        let rocket = setup().await;
-        let client = Client::tracked(rocket).await.expect("Must provice a valid Rocket instance");
+        let client = setup().await;
         let new_pelanggan = PelangganForm { 
             nama: "Castorice".to_string(), 
             alamat: "Styxia".to_string(), 
@@ -149,8 +173,7 @@ mod tests {
 
     #[async_test]
     async fn test_get_pelanggan_by_id() {
-        let rocket = setup().await;
-        let client = Client::tracked(rocket).await.expect("Must provice a valid Rocket instance");
+        let client = setup().await;
         let new_pelanggan = PelangganForm { 
             nama: "Castorice".to_string(), 
             alamat: "Styxia".to_string(), 
@@ -171,8 +194,7 @@ mod tests {
 
     #[async_test]
     async fn test_update_pelanggan() {
-        let rocket = setup().await;
-        let client = Client::tracked(rocket).await.expect("Must provice a valid Rocket instance");
+        let client = setup().await;
         let new_pelanggan = PelangganForm { 
             nama: "Castorice".to_string(), 
             alamat: "Styxia".to_string(), 
@@ -205,8 +227,7 @@ mod tests {
 
     #[async_test]
     async fn test_delete_pelanggan() {
-        let rocket = setup().await;
-        let client = Client::tracked(rocket).await.expect("Must provice a valid Rocket instance");
+        let client = setup().await;
         let new_pelanggan = PelangganForm { 
             nama: "Castorice".to_string(), 
             alamat: "Styxia".to_string(), 
@@ -225,8 +246,7 @@ mod tests {
 
     #[async_test]
     async fn test_get_pelanggan_by_id_not_found() {
-        let rocket = setup().await;
-        let client = Client::tracked(rocket).await.expect("Must provice a valid Rocket instance");
+        let client = setup().await;
         let response = client.get(uri!(super::get_pelanggan_by_id(999)))
             .dispatch()
             .await;
@@ -235,8 +255,7 @@ mod tests {
 
     #[async_test]
     async fn test_get_all_pelanggan_sort() {
-        let rocket = setup().await;
-        let client = Client::tracked(rocket).await.expect("Must provice a valid Rocket instance");
+        let client = setup().await;
         let new_pelanggan = PelangganForm { 
             nama: "Castorice".to_string(), 
             alamat: "Styxia".to_string(), 
@@ -277,8 +296,7 @@ mod tests {
 
     #[async_test]
     async fn test_get_all_pelanggan_filter() {
-        let rocket = setup().await;
-        let client = Client::tracked(rocket).await.expect("Must provice a valid Rocket instance");
+        let client = setup().await;
         let new_pelanggan = PelangganForm { 
             nama: "Castorice".to_string(), 
             alamat: "Styxia".to_string(), 
@@ -317,8 +335,7 @@ mod tests {
 
     #[async_test]
     async fn test_get_all_pelanggan_sort_and_filter() {
-        let rocket = setup().await;
-        let client = Client::tracked(rocket).await.expect("Must provice a valid Rocket instance");
+        let client = setup().await;
         let new_pelanggan = PelangganForm { 
             nama: "Castorice".to_string(), 
             alamat: "Styxia".to_string(), 
