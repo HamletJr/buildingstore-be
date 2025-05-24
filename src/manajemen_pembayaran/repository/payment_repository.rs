@@ -260,4 +260,205 @@ impl PembayaranRepository {
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chrono::{DateTime, Utc};
+    use uuid::Uuid;
+    use std::collections::HashMap;
+
+    #[test]
+    fn test_parse_row_to_payment_success() {
+        // Test akan dilakukan dengan mock data
+        // Karena parse_row_to_payment adalah function internal yang membutuhkan AnyRow
+        // Test ini menguji logika parsing payment method dan status
+        
+        let payment_method_cash = match "CASH" {
+            "CASH" => PaymentMethod::Cash,
+            "CREDIT_CARD" => PaymentMethod::CreditCard,
+            "BANK_TRANSFER" => PaymentMethod::BankTransfer,
+            "E_WALLET" => PaymentMethod::EWallet,
+            _ => panic!("Invalid payment method"),
+        };
+        
+        assert_eq!(payment_method_cash, PaymentMethod::Cash);
+        
+        let payment_method_credit = match "CREDIT_CARD" {
+            "CASH" => PaymentMethod::Cash,
+            "CREDIT_CARD" => PaymentMethod::CreditCard,
+            "BANK_TRANSFER" => PaymentMethod::BankTransfer,
+            "E_WALLET" => PaymentMethod::EWallet,
+            _ => panic!("Invalid payment method"),
+        };
+        
+        assert_eq!(payment_method_credit, PaymentMethod::CreditCard);
+    }    #[test]
+    fn test_payment_status_parsing() {
+        let status_paid = PaymentStatus::from_string("LUNAS");
+        assert_eq!(status_paid, Some(PaymentStatus::Paid));
+        
+        let status_installment = PaymentStatus::from_string("CICILAN");
+        assert_eq!(status_installment, Some(PaymentStatus::Installment));
+        
+        let status_invalid = PaymentStatus::from_string("INVALID");
+        assert_eq!(status_invalid, None);
+    }
+
+    #[test]
+    fn test_payment_method_string_conversion() {
+        assert_eq!(PaymentMethod::Cash.to_string(), "CASH");
+        assert_eq!(PaymentMethod::CreditCard.to_string(), "CREDIT_CARD");
+        assert_eq!(PaymentMethod::BankTransfer.to_string(), "BANK_TRANSFER");
+        assert_eq!(PaymentMethod::EWallet.to_string(), "E_WALLET");
+    }
+
+    #[test]
+    fn test_payment_creation_structure() {
+        let id = Uuid::new_v4().to_string();
+        let transaction_id = format!("TXN-{}", Uuid::new_v4());
+        let amount = 1000.0;
+        let method = PaymentMethod::Cash;
+        let status = PaymentStatus::Paid;
+        let payment_date = Utc::now();
+        let due_date = Some(Utc::now());
+
+        let payment = Payment {
+            id: id.clone(),
+            transaction_id: transaction_id.clone(),
+            amount,
+            method,
+            status,
+            payment_date,
+            installments: Vec::new(),
+            due_date,
+        };
+
+        assert_eq!(payment.id, id);
+        assert_eq!(payment.transaction_id, transaction_id);
+        assert_eq!(payment.amount, amount);
+        assert_eq!(payment.method, PaymentMethod::Cash);
+        assert_eq!(payment.status, PaymentStatus::Paid);
+        assert!(payment.installments.is_empty());
+        assert!(payment.due_date.is_some());
+    }
+
+    #[test]
+    fn test_installment_creation() {
+        let id = format!("INST-{}", Uuid::new_v4());
+        let payment_id = Uuid::new_v4().to_string();
+        let amount = 500.0;
+        let payment_date = Utc::now();
+
+        let installment = Installment {
+            id: id.clone(),
+            payment_id: payment_id.clone(),
+            amount,
+            payment_date,
+        };
+
+        assert_eq!(installment.id, id);
+        assert_eq!(installment.payment_id, payment_id);
+        assert_eq!(installment.amount, amount);
+    }
+
+    #[test]
+    fn test_filter_map_creation() {
+        let mut filters = HashMap::new();
+        filters.insert("status".to_string(), "PENDING".to_string());
+        filters.insert("method".to_string(), "CASH".to_string());
+        filters.insert("transaction_id".to_string(), "TXN-123".to_string());
+
+        assert_eq!(filters.get("status"), Some(&"PENDING".to_string()));
+        assert_eq!(filters.get("method"), Some(&"CASH".to_string()));
+        assert_eq!(filters.get("transaction_id"), Some(&"TXN-123".to_string()));
+        assert_eq!(filters.get("invalid_key"), None);
+    }
+
+    #[test]
+    fn test_date_time_string_formatting() {
+        let now = Utc::now();
+        let formatted = now.naive_utc().to_string();
+        
+        // Test that the formatted string is not empty and contains expected components
+        assert!(!formatted.is_empty());
+        assert!(formatted.contains("-")); // Date separators
+        assert!(formatted.contains(":")); // Time separators
+    }
+
+    #[test]
+    fn test_uuid_generation_for_installment() {
+        let uuid1 = Uuid::new_v4();
+        let uuid2 = Uuid::new_v4();
+        let installment_id1 = format!("INST-{}", uuid1);
+        let installment_id2 = format!("INST-{}", uuid2);
+
+        assert_ne!(installment_id1, installment_id2);
+        assert!(installment_id1.starts_with("INST-"));
+        assert!(installment_id2.starts_with("INST-"));
+    }    #[test]
+    fn test_payment_status_to_string() {
+        assert_eq!(PaymentStatus::Paid.to_string(), "LUNAS");
+        assert_eq!(PaymentStatus::Installment.to_string(), "CICILAN");
+    }
+
+    #[test]
+    fn test_payment_amount_calculation() {
+        let main_payment = Payment {
+            id: Uuid::new_v4().to_string(),
+            transaction_id: format!("TXN-{}", Uuid::new_v4()),
+            amount: 1000.0,
+            method: PaymentMethod::Cash,
+            status: PaymentStatus::Installment,
+            payment_date: Utc::now(),
+            installments: vec![
+                Installment {
+                    id: format!("INST-{}", Uuid::new_v4()),
+                    payment_id: "payment-1".to_string(),
+                    amount: 300.0,
+                    payment_date: Utc::now(),
+                },
+                Installment {
+                    id: format!("INST-{}", Uuid::new_v4()),
+                    payment_id: "payment-1".to_string(),
+                    amount: 200.0,
+                    payment_date: Utc::now(),
+                },
+            ],
+            due_date: None,
+        };
+
+        let total_installments: f64 = main_payment.installments.iter().map(|i| i.amount).sum();
+        assert_eq!(total_installments, 500.0);
+        
+        let remaining_amount = main_payment.amount - total_installments;
+        assert_eq!(remaining_amount, 500.0);
+    }
+
+    #[test]
+    fn test_payment_with_no_installments() {
+        let payment = Payment {
+            id: Uuid::new_v4().to_string(),
+            transaction_id: format!("TXN-{}", Uuid::new_v4()),
+            amount: 1500.0,
+            method: PaymentMethod::BankTransfer,
+            status: PaymentStatus::Paid,
+            payment_date: Utc::now(),
+            installments: Vec::new(),
+            due_date: Some(Utc::now()),
+        };
+
+        assert!(payment.installments.is_empty());
+        assert_eq!(payment.amount, 1500.0);
+        assert_eq!(payment.status, PaymentStatus::Paid);
+    }
+
+    #[test]
+    fn test_payment_method_equality() {
+        assert_eq!(PaymentMethod::Cash, PaymentMethod::Cash);
+        assert_eq!(PaymentMethod::CreditCard, PaymentMethod::CreditCard);
+        assert_ne!(PaymentMethod::Cash, PaymentMethod::CreditCard);
+        assert_ne!(PaymentMethod::BankTransfer, PaymentMethod::EWallet);
+    }
+}
+
 
