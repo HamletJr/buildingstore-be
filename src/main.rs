@@ -7,7 +7,7 @@ use sqlx::any::install_default_drivers;
 use rocket::State;
 use sqlx::{Any, Pool};
 use rocket_cors::{AllowedOrigins, CorsOptions};
-use rocket_cors::{AllowedOrigins, CorsOptions};
+use autometrics::prometheus_exporter;
 
 pub mod auth;
 pub mod manajemen_produk;
@@ -34,29 +34,30 @@ async fn test_db(db: &State<Pool<Any>>) -> Option<String> {
     Some(format!("Hello, {}! Your ID is {}.", email, id))
 }
 
+#[get("/metrics")]
+pub fn metrics() -> String {
+    prometheus_exporter::encode_to_string().unwrap()
+}
+
+
 #[launch]
 async fn rocket() -> _ {
     dotenv().ok();
+    let production = std::env::var("PRODUCTION").unwrap_or_else(|_| "false".to_string()) == "true";
+    println!("Running in production mode: {}", production);
 
     // CORS Configuration
     let cors = CorsOptions::default()
         .allowed_origins(AllowedOrigins::some_exact(&[
             "http://127.0.0.1:3000",
-            "https://your-production-domain.com",
+            "https://a10-buildingstore-fe.koyeb.app",
         ]))
         .allow_credentials(true)
         .to_cors()
         .expect("Failed to create CORS");
 
-    // CORS Configuration
-    let cors = CorsOptions::default()
-        .allowed_origins(AllowedOrigins::some_exact(&[
-            "http://127.0.0.1:3000",
-            "https://your-production-domain.com",
-        ]))
-        .allow_credentials(true)
-        .to_cors()
-        .expect("Failed to create CORS");
+    // Initialize Prometheus Exporter
+    prometheus_exporter::init();
 
     install_default_drivers();
     let database_url = dotenvy::var("DATABASE_URL").expect("DATABASE_URL must be set");
@@ -64,11 +65,12 @@ async fn rocket() -> _ {
     sqlx::migrate!()
         .run(&db_pool)
         .await
-        .expect("Failed to run migrations");    rocket::build()
-        .expect("Failed to run migrations");    rocket::build()
+        .expect("Failed to run migrations");    
+  
+    rocket::build()
         .manage(reqwest::Client::builder().build().unwrap())
         .manage(db_pool)
-        .attach(cors)
+        .manage(production)
         .attach(cors)
         .attach(BuildingStoreDB::init())
         .attach(auth::controller::route_stage())
@@ -76,5 +78,5 @@ async fn rocket() -> _ {
         .attach(manajemen_pembayaran::controller::route_stage())
         .attach(manajemen_pelanggan::controller::route_stage())
         .attach(transaksi_penjualan::controller::route_stage())
-        .mount("/", routes![index, test_db])
+        .mount("/", routes![index, test_db, metrics])
 }
