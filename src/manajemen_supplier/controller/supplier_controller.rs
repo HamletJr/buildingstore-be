@@ -1,4 +1,4 @@
-use rocket::{get, post, put, delete, routes, State, http::Status,uri};
+use rocket::{get, post, put, delete, routes, State, http::Status};
 use rocket::serde::{json::Json, Deserialize, Serialize};
 use sqlx::{Any, Pool};
 use std::sync::Arc;

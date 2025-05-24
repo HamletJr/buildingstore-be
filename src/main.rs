@@ -1,7 +1,7 @@
 #[macro_use] extern crate rocket;
 use rocket_db_pools::Database;
 use rocket_db_pools::sqlx::{self, Row};
-use buildingstore_be::BuildingStoreDB;
+use buildingstore_be::{manajemen_supplier, BuildingStoreDB};
 use dotenvy::dotenv;
 use sqlx::any::install_default_drivers;
 use rocket::State;
@@ -14,6 +14,7 @@ pub mod manajemen_produk;
 pub mod manajemen_pelanggan;
 pub mod transaksi_penjualan;
 pub mod manajemen_pembayaran;
+pub mod manajemen_supplier;
 
 #[get("/")]
 fn index() -> &'static str {
@@ -76,5 +77,6 @@ async fn rocket() -> _ {
         .attach(manajemen_pembayaran::controller::route_stage())
         .attach(manajemen_pelanggan::controller::route_stage())
         .attach(transaksi_penjualan::controller::route_stage())
+        .attach(manajemen_supplier::controller::route_stage())
         .mount("/", routes![index, test_db])
 }
