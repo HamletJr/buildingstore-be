@@ -13,7 +13,6 @@ pub mod auth;
 pub mod manajemen_produk;
 pub mod manajemen_pelanggan;
 pub mod transaksi_penjualan;
-pub mod manajemen_pembayaran;
 
 #[get("/")]
 fn index() -> &'static str {
