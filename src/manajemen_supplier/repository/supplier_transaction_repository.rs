@@ -1,7 +1,10 @@
 use async_trait::async_trait;
 use sqlx::{Any, pool::PoolConnection};
 use crate::manajemen_supplier::model::supplier_transaction::SupplierTransaction;
+use mockall::automock;
 
+
+#[automock]
 #[async_trait]
 pub trait SupplierTransactionRepository: Send + Sync {
     async fn save(&self, transaction: SupplierTransaction, db: PoolConnection<Any>) -> Result<SupplierTransaction, sqlx::Error>;
