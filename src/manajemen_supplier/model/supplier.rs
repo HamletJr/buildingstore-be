@@ -1,7 +1,8 @@
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 /// Struct untuk supplier
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Supplier {
     pub id: String,
     pub name: String,
