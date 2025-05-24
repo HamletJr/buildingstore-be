@@ -3,6 +3,9 @@ use rocket::State;
 use rocket::http::Status;
 use rocket::serde::json::Json;
 use sqlx::{Any, Pool};
+use autometrics::autometrics;
+
+use crate::auth::guards::auth::AuthenticatedUser;
 use crate::transaksi_penjualan::model::transaksi::Transaksi;
 use crate::transaksi_penjualan::model::detail_transaksi::DetailTransaksi;
 use crate::transaksi_penjualan::service::transaksi::TransaksiService;
@@ -43,8 +46,10 @@ impl ErrorResponse {
     }
 }
 
+#[autometrics]
 #[get("/transaksi?<sort>&<filter>&<keyword>&<status>&<id_pelanggan>&<page>&<limit>")]
 pub async fn get_all_transaksi(
+    _user: AuthenticatedUser,
     db: &State<Pool<Any>>, 
     sort: Option<String>, 
     filter: Option<String>, 
@@ -73,8 +78,10 @@ pub async fn get_all_transaksi(
     }
 }
 
+#[autometrics]
 #[post("/transaksi", data = "<request>")]
 pub async fn create_transaksi(
+    _user: AuthenticatedUser,
     db: &State<Pool<Any>>, 
     request: Json<crate::transaksi_penjualan::dto::transaksi_request::CreateTransaksiRequest>
 ) -> Result<Json<ApiResponse<Transaksi>>, (Status, Json<ErrorResponse>)> {
@@ -105,8 +112,10 @@ pub async fn create_transaksi(
     }
 }
 
+#[autometrics]
 #[get("/transaksi/<id>")]
 pub async fn get_transaksi_by_id(
+    _user: AuthenticatedUser,
     db: &State<Pool<Any>>, 
     id: i32
 ) -> Result<Json<ApiResponse<Transaksi>>, (Status, Json<ErrorResponse>)> {
@@ -119,8 +128,10 @@ pub async fn get_transaksi_by_id(
     }
 }
 
+#[autometrics]
 #[patch("/transaksi/<id>", data = "<transaksi>")]
 pub async fn update_transaksi(
+    _user: AuthenticatedUser,
     db: &State<Pool<Any>>, 
     id: i32, 
     transaksi: Json<Transaksi>
@@ -165,8 +176,10 @@ pub async fn update_transaksi(
     }
 }
 
+#[autometrics]
 #[delete("/transaksi/<id>")]
 pub async fn delete_transaksi(
+    _user: AuthenticatedUser,
     db: &State<Pool<Any>>, 
     id: i32
 ) -> Result<Json<ApiResponse<String>>, (Status, Json<ErrorResponse>)> {
@@ -203,8 +216,10 @@ pub async fn delete_transaksi(
     }
 }
 
+#[autometrics]
 #[put("/transaksi/<id>/complete")]
 pub async fn complete_transaksi(
+    _user: AuthenticatedUser,
     db: &State<Pool<Any>>, 
     id: i32
 ) -> Result<Json<ApiResponse<Transaksi>>, (Status, Json<ErrorResponse>)> {
@@ -221,8 +236,10 @@ pub async fn complete_transaksi(
     }
 }
 
+#[autometrics]
 #[put("/transaksi/<id>/cancel")]
 pub async fn cancel_transaksi(
+    _user: AuthenticatedUser,
     db: &State<Pool<Any>>, 
     id: i32
 ) -> Result<Json<ApiResponse<Transaksi>>, (Status, Json<ErrorResponse>)> {
@@ -239,8 +256,10 @@ pub async fn cancel_transaksi(
     }
 }
 
+#[autometrics]
 #[get("/transaksi/<id_transaksi>/detail")]
 pub async fn get_detail_transaksi(
+    _user: AuthenticatedUser,
     db: &State<Pool<Any>>, 
     id_transaksi: i32
 ) -> Result<Json<ApiResponse<Vec<DetailTransaksi>>>, (Status, Json<ErrorResponse>)> {
@@ -253,8 +272,10 @@ pub async fn get_detail_transaksi(
     }
 }
 
+#[autometrics]
 #[post("/transaksi/<id_transaksi>/detail", data = "<detail>")]
 pub async fn add_detail_transaksi(
+    _user: AuthenticatedUser,
     db: &State<Pool<Any>>, 
     id_transaksi: i32, 
     detail: Json<DetailTransaksi>
@@ -299,8 +320,10 @@ pub async fn add_detail_transaksi(
     }
 }
 
+#[autometrics]
 #[patch("/transaksi/<id_transaksi>/detail/<id_detail>", data = "<detail>")]
 pub async fn update_detail_transaksi(
+    _user: AuthenticatedUser,
     db: &State<Pool<Any>>, 
     id_transaksi: i32, 
     id_detail: i32, 
@@ -346,8 +369,10 @@ pub async fn update_detail_transaksi(
     }
 }
 
+#[autometrics]
 #[delete("/transaksi/<id_transaksi>/detail/<id_detail>")]
 pub async fn delete_detail_transaksi(
+    _user: AuthenticatedUser,
     db: &State<Pool<Any>>, 
     id_transaksi: i32, 
     id_detail: i32
@@ -385,8 +410,10 @@ pub async fn delete_detail_transaksi(
     }
 }
 
+#[autometrics]
 #[get("/transaksi/<id>/full")]
 pub async fn get_transaksi_with_details(
+    _user: AuthenticatedUser,
     db: &State<Pool<Any>>, 
     id: i32
 ) -> Result<Json<ApiResponse<crate::transaksi_penjualan::dto::transaksi_request::TransaksiWithDetailsResponse>>, (Status, Json<ErrorResponse>)> {
@@ -419,6 +446,7 @@ pub async fn get_transaksi_with_details(
     Ok(Json(ApiResponse::success("Data transaksi berhasil diambil", response)))
 }
 
+#[autometrics]
 #[post("/transaksi/validate-stock", data = "<products>")]
 pub async fn validate_product_stock(
     products: Json<Vec<crate::transaksi_penjualan::dto::transaksi_request::CreateDetailTransaksiRequest>>
