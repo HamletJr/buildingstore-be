@@ -4,7 +4,6 @@ use serde::{Serialize, Deserialize};
 pub enum PaymentStatus {
     Paid,    // LUNAS
     Installment,  // CICILAN
-    Pending,  // MENUNGGU
 }
 
 impl PaymentStatus {
@@ -12,8 +11,6 @@ impl PaymentStatus {
         match status.to_uppercase().as_str() {
             "LUNAS" => Some(PaymentStatus::Paid),
             "CICILAN" => Some(PaymentStatus::Installment),
-            "MENUNGGU" => Some(PaymentStatus::Pending),
-            "PENDING" => Some(PaymentStatus::Pending),
             _ => None,
         }
     }
@@ -22,7 +19,6 @@ impl PaymentStatus {
         match self {
             PaymentStatus::Paid => "LUNAS".to_string(),
             PaymentStatus::Installment => "CICILAN".to_string(),
-            PaymentStatus::Pending => "MENUNGGU".to_string(),
         }
     }
 }
