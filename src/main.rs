@@ -1,12 +1,9 @@
 #[macro_use] extern crate rocket;
 use rocket_cors::{AllowedOrigins, CorsOptions};
 use rocket_db_pools::Database;
-use rocket_db_pools::sqlx::{self, Row};
 use buildingstore_be::{BuildingStoreDB};
 use dotenvy::dotenv;
 use sqlx::any::install_default_drivers;
-use rocket::State;
-use sqlx::{Any, Pool};
 use autometrics::prometheus_exporter;
 
 pub mod auth;
@@ -21,20 +18,6 @@ fn index() -> &'static str {
     "Hello, world!"
 }
 
-#[get("/db")]
-async fn test_db(db: &State<Pool<Any>>) -> Option<String> {
-    let mut db_conn = db.acquire().await.unwrap();
-    let row = sqlx::query("SELECT * FROM users LIMIT 1")
-        .fetch_one(&mut *db_conn)
-        .await
-        .unwrap();
-
-    let id: i64 = row.get("id");
-    let email: String = row.get("username");
-
-    Some(format!("Hello, {}! Your ID is {}.", email, id))
-}
-
 #[get("/metrics")]
 pub fn metrics() -> String {
     prometheus_exporter::encode_to_string().unwrap()
@@ -44,7 +27,6 @@ pub fn metrics() -> String {
 async fn rocket() -> _ {
     dotenv().ok();
     let production = std::env::var("PRODUCTION").unwrap_or_else(|_| "false".to_string()) == "true";
-    println!("Running in production mode: {}", production);
 
     // CORS Configuration
     let cors = CorsOptions::default()
@@ -81,5 +63,5 @@ async fn rocket() -> _ {
         .attach(transaksi_penjualan::controller::route_stage())
         .attach(manajemen_supplier::controller::route_stage())
         .attach(manajemen_produk::controller::route_stage())
-        .mount("/", routes![index, test_db])
+        .mount("/", routes![index, metrics])
 }
