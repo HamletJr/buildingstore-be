@@ -101,7 +101,11 @@ mod tests {
     use super::*;
     use crate::manajemen_produk::produk::repository::create::tambah_produk;
     use crate::manajemen_produk::produk::repository::delete::clear_all;
+    use crate::manajemen_produk::produk::repository::helper::init_database;
     use tokio::test;
+
+    // Test synchronization to prevent race conditions
+    static TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     // Helper function to create test products
     fn create_test_products() -> Vec<Produk> {
@@ -130,15 +134,20 @@ mod tests {
         ]
     }
 
-    // Helper function to clean repository between tests
-    async fn cleanup_repository() -> Result<(), RepositoryError> {
-        clear_all().await
+    // Helper function to setup database and clean repository between tests
+    async fn setup_and_cleanup_repository() -> Result<(), RepositoryError> {
+        let _ = init_database().await;
+        clear_all().await?;
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        Ok(())
     }
 
     #[test]
     async fn test_ambil_semua_produk() {
-        // Start with clean repository
-        let _ = cleanup_repository().await;
+        let _lock = TEST_MUTEX.lock().unwrap();
+        
+        // Setup database and clean repository
+        let _ = setup_and_cleanup_repository().await;
         
         // Add multiple products
         let mut test_products = create_test_products();
@@ -169,8 +178,10 @@ mod tests {
 
     #[test]
     async fn test_ambil_produk_by_id() {
-        // Start with clean repository
-        let _ = cleanup_repository().await;
+        let _lock = TEST_MUTEX.lock().unwrap();
+        
+        // Setup database and clean repository
+        let _ = setup_and_cleanup_repository().await;
         
         // Add a product
         let produk = create_test_products()[0].clone();
@@ -187,8 +198,10 @@ mod tests {
 
     #[test]
     async fn test_ambil_produk_tidak_ada() {
-        // Start with clean repository
-        let _ = cleanup_repository().await;
+        let _lock = TEST_MUTEX.lock().unwrap();
+        
+        // Setup database and clean repository
+        let _ = setup_and_cleanup_repository().await;
         
         // Try to retrieve non-existent product
         let retrieved = ambil_produk_by_id(9999).await.unwrap();
@@ -197,8 +210,10 @@ mod tests {
 
     #[test]
     async fn test_filter_by_kategori() {
-        // Start with clean repository
-        let _ = cleanup_repository().await;
+        let _lock = TEST_MUTEX.lock().unwrap();
+        
+        // Setup database and clean repository
+        let _ = setup_and_cleanup_repository().await;
         
         // Add test products
         let test_products = create_test_products();
@@ -224,8 +239,10 @@ mod tests {
 
     #[test]
     async fn test_filter_by_price_range() {
-        // Start with clean repository
-        let _ = cleanup_repository().await;
+        let _lock = TEST_MUTEX.lock().unwrap();
+        
+        // Setup database and clean repository
+        let _ = setup_and_cleanup_repository().await;
         
         // Add test products
         let test_products = create_test_products();
@@ -252,8 +269,10 @@ mod tests {
 
     #[test]
     async fn test_filter_by_stock_availability() {
-        // Start with clean repository
-        let _ = cleanup_repository().await;
+        let _lock = TEST_MUTEX.lock().unwrap();
+        
+        // Setup database and clean repository
+        let _ = setup_and_cleanup_repository().await;
         
         // Add test products
         let test_products = create_test_products();
@@ -279,8 +298,10 @@ mod tests {
 
     #[test]
     async fn test_search_produk_by_name() {
-        // Start with clean repository
-        let _ = cleanup_repository().await;
+        let _lock = TEST_MUTEX.lock().unwrap();
+        
+        // Setup database and clean repository
+        let _ = setup_and_cleanup_repository().await;
         
         // Add test products
         let test_products = create_test_products();
@@ -293,7 +314,7 @@ mod tests {
         assert_eq!(laptop_results.len(), 1);
         assert_eq!(laptop_results[0].nama, "Laptop Gaming");
         
-        // Search case insensitive
+        // Search case insensitive (Note: SQLite LIKE is case-insensitive by default)
         let case_insensitive = search_produk_by_name("gaming").await.unwrap();
         assert_eq!(case_insensitive.len(), 1);
         assert_eq!(case_insensitive[0].nama, "Laptop Gaming");
@@ -302,15 +323,17 @@ mod tests {
         let no_results = search_produk_by_name("NonExistent").await.unwrap();
         assert!(no_results.is_empty());
         
-        // Search with multiple results
-        let multiple_results = search_produk_by_name("e").await.unwrap(); // Should match multiple products
+        // Search with multiple results - search for "e" which should match multiple products
+        let multiple_results = search_produk_by_name("e").await.unwrap(); 
         assert!(multiple_results.len() > 1);
     }
 
     #[test]
     async fn test_empty_repository() {
-        // Start with clean repository
-        let _ = cleanup_repository().await;
+        let _lock = TEST_MUTEX.lock().unwrap();
+        
+        // Setup database and clean repository
+        let _ = setup_and_cleanup_repository().await;
         
         // Test all read operations on empty repository
         let all_products = ambil_semua_produk().await.unwrap();

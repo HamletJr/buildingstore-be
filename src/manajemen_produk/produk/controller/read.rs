@@ -57,8 +57,16 @@ mod tests {
     use crate::manajemen_produk::produk::controller::dto::{ApiResponse, ProdukResponse};
     use crate::manajemen_produk::produk::model::Produk;
     use crate::manajemen_produk::produk::repository;
+    use std::sync::Mutex;
+    use std::sync::Arc;
+
+    // Test synchronization to prevent race conditions
+    static TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     async fn setup_test_client() -> Client {
+        // Initialize database first
+        let _ = repository::helper::init_database().await;
+        
         // Use all routes instead of just read routes
         let rocket = rocket::build().mount("/api", super::super::routes());
         Client::tracked(rocket).await.expect("valid rocket instance")
@@ -96,12 +104,14 @@ mod tests {
 
     async fn clean_test_data() {
         let _ = repository::delete::clear_all().await;
-        // Add small delay to ensure cleanup is complete
-        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        // Add delay to ensure cleanup is complete
+        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
     }
 
     #[tokio::test]
     async fn test_list_produk() {
+        let _lock = TEST_MUTEX.lock().unwrap();
+        
         let client = setup_test_client().await;
         
         // Clean and seed test data
@@ -127,6 +137,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_detail_produk() {
+        let _lock = TEST_MUTEX.lock().unwrap();
+        
         let client = setup_test_client().await;
         
         // Clean and seed test data
@@ -159,6 +171,8 @@ mod tests {
 
     #[tokio::test]
     async fn test_detail_produk_not_found() {
+        let _lock = TEST_MUTEX.lock().unwrap();
+        
         let client = setup_test_client().await;
         
         // Ensure clean state first
@@ -183,13 +197,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_list_produk_empty() {
+        let _lock = TEST_MUTEX.lock().unwrap();
+        
         let client = setup_test_client().await;
         
         // Clean test data to ensure empty state and wait for cleanup
         clean_test_data().await;
-        
-        // Wait a bit more to ensure database is truly clean
-        tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
         
         // Test the endpoint
         let response = client.get("/api/produk")
