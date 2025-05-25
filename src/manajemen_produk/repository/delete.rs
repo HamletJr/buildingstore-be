@@ -1,4 +1,4 @@
-use crate::manajemen_produk::produk::repository::dto::{get_db_pool, RepositoryError};
+use crate::manajemen_produk::repository::dto::{get_db_pool, RepositoryError};
 
 pub async fn hapus_produk(id: i64) -> Result<bool, RepositoryError> {
     let pool = get_db_pool()?;
@@ -36,10 +36,10 @@ pub async fn clear_all() -> Result<(), RepositoryError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::manajemen_produk::produk::model::Produk;
-    use crate::manajemen_produk::produk::repository::create::tambah_produk;
-    use crate::manajemen_produk::produk::repository::read::{ambil_produk_by_id, ambil_semua_produk};
-    use crate::manajemen_produk::produk::repository::dto::init_database;
+    use crate::manajemen_produk::model::Produk;
+    use crate::manajemen_produk::repository::create::tambah_produk;
+    use crate::manajemen_produk::repository::read::{ambil_produk_by_id, ambil_semua_produk};
+    use crate::manajemen_produk::repository::dto::init_database;
     use tokio::test;
 
     fn create_test_product() -> Produk {

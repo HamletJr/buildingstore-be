@@ -1,7 +1,7 @@
 use rocket::serde::json::Json;
 use rocket::{post, routes, Route};
-use crate::manajemen_produk::produk::model::Produk;
-use crate::manajemen_produk::produk::repository;
+use crate::manajemen_produk::model::Produk;
+use crate::manajemen_produk::repository;
 use super::dto::{ProdukRequest, ProdukResponse, ApiResponse};
 
 #[post("/produk", format = "json", data = "<request>")]
@@ -66,8 +66,8 @@ mod tests {
     use rocket::local::asynchronous::Client;
     use rocket::serde::json::json;
     use serde_json;
-    use crate::manajemen_produk::produk::controller::{ApiResponse, ProdukResponse};
-    use crate::manajemen_produk::produk::repository::dto::init_database;
+    use crate::manajemen_produk::controller::{ApiResponse, ProdukResponse};
+    use crate::manajemen_produk::repository::dto::init_database;
 
     async fn setup_test_client() -> Client {
         let _ = init_database().await;
@@ -77,7 +77,7 @@ mod tests {
 
     async fn clean_test_data() {
         let _ = init_database().await;
-        let _ = crate::manajemen_produk::produk::repository::delete::clear_all().await;
+        let _ = crate::manajemen_produk::repository::delete::clear_all().await;
     }
 
     #[tokio::test]

@@ -1,6 +1,6 @@
 use rocket::serde::json::Json;
 use rocket::{delete, routes, Route};
-use crate::manajemen_produk::produk::repository;
+use crate::manajemen_produk::repository;
 use super::dto::ApiResponse;
 
 #[delete("/produk/<id>")]
@@ -40,9 +40,9 @@ pub fn routes() -> Vec<Route> {
 mod tests {
     use rocket::http::Status;
     use rocket::local::asynchronous::Client;
-    use crate::manajemen_produk::produk::controller::{ApiResponse, routes};
-    use crate::manajemen_produk::produk::model::Produk;
-    use crate::manajemen_produk::produk::repository;
+    use crate::manajemen_produk::controller::{ApiResponse, routes};
+    use crate::manajemen_produk::model::Produk;
+    use crate::manajemen_produk::repository;
 
     async fn setup_test_client() -> Client {
         let rocket = rocket::build().mount("/api", routes());

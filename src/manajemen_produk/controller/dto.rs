@@ -1,5 +1,5 @@
 use rocket::serde::{Deserialize, Serialize};
-use crate::manajemen_produk::produk::model::Produk;
+use crate::manajemen_produk::model::Produk;
 
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(crate = "rocket::serde")]

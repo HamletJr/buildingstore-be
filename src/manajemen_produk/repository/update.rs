@@ -1,5 +1,5 @@
-use crate::manajemen_produk::produk::model::Produk;
-use crate::manajemen_produk::produk::repository::dto::{get_db_pool, validate_produk, RepositoryError};
+use crate::manajemen_produk::model::Produk;
+use crate::manajemen_produk::repository::dto::{get_db_pool, validate_produk, RepositoryError};
 
 pub async fn update_produk(id: i64, produk: &Produk) -> Result<bool, RepositoryError> {
     // Validasi input
@@ -69,10 +69,10 @@ pub async fn update_harga(id: i64, new_harga: f64) -> Result<bool, RepositoryErr
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::manajemen_produk::produk::repository::create::tambah_produk;
-    use crate::manajemen_produk::produk::repository::read::ambil_produk_by_id;
-    use crate::manajemen_produk::produk::repository::delete::clear_all;
-    use crate::manajemen_produk::produk::repository::dto::init_database;
+    use crate::manajemen_produk::repository::create::tambah_produk;
+    use crate::manajemen_produk::repository::read::ambil_produk_by_id;
+    use crate::manajemen_produk::repository::delete::clear_all;
+    use crate::manajemen_produk::repository::dto::init_database;
     use tokio::test;
 
     fn create_test_product() -> Produk {

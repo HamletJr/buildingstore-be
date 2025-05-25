@@ -1,5 +1,5 @@
-use crate::manajemen_produk::produk::model::Produk;
-use crate::manajemen_produk::produk::repository::dto::{get_db_pool, validate_produk, RepositoryError};
+use crate::manajemen_produk::model::Produk;
+use crate::manajemen_produk::repository::dto::{get_db_pool, validate_produk, RepositoryError};
 
 pub async fn tambah_produk(produk: &Produk) -> Result<i64, RepositoryError> {
     // Validasi terlebih dahulu
@@ -27,9 +27,9 @@ pub async fn tambah_produk(produk: &Produk) -> Result<i64, RepositoryError> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::manajemen_produk::produk::repository::delete::clear_all;
-    use crate::manajemen_produk::produk::repository::read::ambil_produk_by_id;
-    use crate::manajemen_produk::produk::repository::dto::init_database;
+    use crate::manajemen_produk::repository::delete::clear_all;
+    use crate::manajemen_produk::repository::read::ambil_produk_by_id;
+    use crate::manajemen_produk::repository::dto::init_database;
     use tokio::test;
 
     // Helper function to create test products
@@ -124,7 +124,7 @@ mod tests {
         assert_eq!(ids.len(), 3);
         
         // Delete a product
-        let _ = crate::manajemen_produk::produk::repository::delete::hapus_produk(ids[1]).await;
+        let _ = crate::manajemen_produk::repository::delete::hapus_produk(ids[1]).await;
         
         // Add another product
         let produk = Produk::new(

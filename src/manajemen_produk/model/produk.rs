@@ -60,7 +60,7 @@ impl Produk {
     }
     
     pub fn validate(&self) -> Result<(), Vec<String>> {
-        use crate::manajemen_produk::produk::validation::ProdukValidator;
+        use crate::manajemen_produk::validation::ProdukValidator;
         
         let validator = ProdukValidator::default();
         validator.validate(self)

@@ -1,4 +1,4 @@
-use crate::manajemen_produk::produk::model::Produk;
+use crate::manajemen_produk::model::Produk;
 use super::rules::{
     ValidationRule,
     NamaNotEmpty,

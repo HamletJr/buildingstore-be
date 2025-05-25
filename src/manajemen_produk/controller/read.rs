@@ -1,6 +1,6 @@
 use rocket::serde::json::Json;
 use rocket::{get, routes, Route};
-use crate::manajemen_produk::produk::repository;
+use crate::manajemen_produk::repository;
 use super::dto::{ProdukResponse, ApiResponse};
 
 #[get("/produk")]
@@ -54,9 +54,9 @@ pub fn routes() -> Vec<Route> {
 mod tests {
     use rocket::http::Status;
     use rocket::local::asynchronous::Client;
-    use crate::manajemen_produk::produk::controller::dto::{ApiResponse, ProdukResponse};
-    use crate::manajemen_produk::produk::model::Produk;
-    use crate::manajemen_produk::produk::repository;
+    use crate::manajemen_produk::controller::dto::{ApiResponse, ProdukResponse};
+    use crate::manajemen_produk::model::Produk;
+    use crate::manajemen_produk::repository;
 
     async fn setup_test_client() -> Client {
         let _ = repository::dto::init_database().await;

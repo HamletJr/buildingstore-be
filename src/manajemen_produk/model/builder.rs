@@ -9,7 +9,7 @@
 // - `deskripsi()`: Menetapkan deskripsi produk (opsional)
 // - `build()`: Membuat Produk dan memvalidasinya, mengembalikan Result
 
-use crate::manajemen_produk::produk::model::Produk;
+use crate::manajemen_produk::model::Produk;
 
 pub struct ProdukBuilder {
     id: Option<i64>,

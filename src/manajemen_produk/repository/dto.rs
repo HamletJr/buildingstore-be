@@ -2,7 +2,7 @@ use sqlx::{Pool, Sqlite, SqlitePool, Row};
 use std::sync::OnceLock;
 use std::error::Error as StdError;
 use std::fmt;
-use crate::manajemen_produk::produk::model::Produk;
+use crate::manajemen_produk::model::Produk;
 
 // Global database connection pool
 static DB_POOL: OnceLock<SqlitePool> = OnceLock::new();

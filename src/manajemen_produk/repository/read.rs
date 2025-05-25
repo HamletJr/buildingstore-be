@@ -1,5 +1,5 @@
-use crate::manajemen_produk::produk::model::Produk;
-use crate::manajemen_produk::produk::repository::dto::{get_db_pool, row_to_produk, RepositoryError};
+use crate::manajemen_produk::model::Produk;
+use crate::manajemen_produk::repository::dto::{get_db_pool, row_to_produk, RepositoryError};
 
 pub async fn ambil_semua_produk() -> Result<Vec<Produk>, RepositoryError> {
     let pool = get_db_pool()?;
@@ -33,9 +33,9 @@ pub async fn ambil_produk_by_id(id: i64) -> Result<Option<Produk>, RepositoryErr
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::manajemen_produk::produk::repository::create::tambah_produk;
-    use crate::manajemen_produk::produk::repository::delete::clear_all;
-    use crate::manajemen_produk::produk::repository::dto::init_database;
+    use crate::manajemen_produk::repository::create::tambah_produk;
+    use crate::manajemen_produk::repository::delete::clear_all;
+    use crate::manajemen_produk::repository::dto::init_database;
     use tokio::test;
 
     fn create_test_products() -> Vec<Produk> {

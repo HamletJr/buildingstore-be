@@ -1,7 +1,7 @@
 use rocket::serde::json::Json;
 use rocket::{put, routes, Route};
-use crate::manajemen_produk::produk::model::{Produk, ProdukBuilder};
-use crate::manajemen_produk::produk::repository;
+use crate::manajemen_produk::model::{Produk, ProdukBuilder};
+use crate::manajemen_produk::repository;
 use super::dto::{ProdukRequest, ProdukResponse, ApiResponse};
 
 #[put("/produk/<id>", format = "json", data = "<request>")]
@@ -123,12 +123,12 @@ mod tests {
     use rocket::http::{ContentType, Status};
     use rocket::local::asynchronous::Client;
     use rocket::serde::json::json;
-    use crate::manajemen_produk::produk::controller::{ApiResponse, ProdukResponse, routes};
-    use crate::manajemen_produk::produk::model::Produk;
-    use crate::manajemen_produk::produk::repository;
+    use crate::manajemen_produk::controller::{ApiResponse, ProdukResponse, routes};
+    use crate::manajemen_produk::model::Produk;
+    use crate::manajemen_produk::repository;
 
     async fn setup_test_client() -> Client {
-        let rocket = rocket::build().mount("/api", crate::manajemen_produk::produk::controller::routes());
+        let rocket = rocket::build().mount("/api", crate::manajemen_produk::controller::routes());
         Client::tracked(rocket).await.expect("valid rocket instance")
     }
 
