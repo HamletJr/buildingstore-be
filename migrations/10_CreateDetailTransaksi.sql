@@ -1,5 +1,5 @@
 CREATE TABLE detail_transaksi (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     id_transaksi INTEGER NOT NULL,
     id_produk INTEGER NOT NULL,
     harga_satuan DECIMAL(15,2) NOT NULL,

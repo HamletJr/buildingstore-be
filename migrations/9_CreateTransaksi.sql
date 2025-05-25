@@ -1,5 +1,5 @@
 CREATE TABLE transaksi (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    id SERIAL PRIMARY KEY,
     id_pelanggan INTEGER NOT NULL,
     nama_pelanggan VARCHAR(255) NOT NULL,
     tanggal_transaksi VARCHAR(100) NOT NULL,
