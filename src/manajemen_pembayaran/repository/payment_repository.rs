@@ -1,7 +1,7 @@
 use sqlx::any::AnyRow;
 use sqlx::{Any, pool::PoolConnection};
 use sqlx::Row;
-use chrono::{DateTime, Utc};
+use chrono::{DateTime, Utc, NaiveDateTime};
 use std::collections::HashMap;
 use uuid::Uuid;
 
@@ -10,20 +10,32 @@ use crate::manajemen_pembayaran::model::payment::{Payment, PaymentMethod, Instal
 
 pub struct PembayaranRepository;
 
-impl PembayaranRepository {
-    pub async fn create(mut db: PoolConnection<Any>, payment: &Payment) -> Result<Payment, sqlx::Error>{
-        let result = sqlx::query("
-            INSERT INTO payments (id, transaction_id, amount, payment_method, status, payment_date, due_date)
+impl PembayaranRepository {    pub async fn create(mut db: PoolConnection<Any>, payment: &Payment) -> Result<Payment, sqlx::Error>{        
+        eprintln!("DEBUG: Creating payment with ID: {}, Transaction ID: {}", payment.id, payment.transaction_id);
+        sqlx::query("
+            INSERT INTO payments (id, transaction_id, amount, method, status, payment_date, due_date)
             VALUES ($1, $2, $3, $4, $5, $6, $7)
-            RETURNING id, transaction_id, amount, payment_method, status, payment_date, due_date
         ")
             .bind(&payment.id)
             .bind(&payment.transaction_id)
             .bind(payment.amount)
             .bind(payment.method.to_string())
             .bind(payment.status.to_string())
-            .bind(payment.payment_date.naive_utc().to_string())
-            .bind(payment.due_date.map(|d| d.naive_utc().to_string()))
+            .bind(payment.payment_date.to_rfc3339())
+            .bind(payment.due_date.map(|d| d.to_rfc3339()))
+            .execute(&mut *db)
+            .await
+            .map_err(|e| {
+                eprintln!("DEBUG: Failed to insert payment: {}", e);
+                e
+            })?;
+
+        let result = sqlx::query("
+            SELECT id, transaction_id, amount, method, status, payment_date, due_date
+            FROM payments
+            WHERE id = $1
+        ")
+            .bind(&payment.id)
             .fetch_one(&mut *db)
             .await?;
 
@@ -43,37 +55,39 @@ impl PembayaranRepository {
 
         Ok(payment_with_installments)
     }    pub async fn find_all(mut db: PoolConnection<Any>, filters: Option<HashMap<String, String>>) -> Result<Vec<Payment>, sqlx::Error> {
-        let mut query_builder = sqlx::QueryBuilder::new(
-            "SELECT id, transaction_id, amount, payment_method, status, payment_date, due_date FROM payments"
-        );
+        let mut base_query = "SELECT id, transaction_id, amount, method, status, payment_date, due_date FROM payments".to_string();
+        let mut where_clauses = Vec::new();
+        let mut bind_values: Vec<&str> = Vec::new();
         
         if let Some(filter_map) = &filters {
-            let mut add_where = true;
             if let Some(status_str) = filter_map.get("status") {
-                query_builder.push(" WHERE status = ");
-                query_builder.push_bind(status_str);
-                add_where = false;
-            }            if let Some(method) = filter_map.get("method") {
-                if add_where {
-                    query_builder.push(" WHERE payment_method = ");
-                    add_where = false;
-                } else {
-                    query_builder.push(" AND payment_method = ");
-                }
-                query_builder.push_bind(method.to_uppercase());
+                where_clauses.push("status = $1".to_string());
+                bind_values.push(status_str);
+            }
+            if let Some(method) = filter_map.get("method") {
+                let param_num = bind_values.len() + 1;
+                where_clauses.push(format!("method = ${}", param_num));
+                bind_values.push(method);
             }
             if let Some(transaction_id) = filter_map.get("transaction_id") {
-                if add_where {
-                    query_builder.push(" WHERE transaction_id = ");
-                } else {
-                    query_builder.push(" AND transaction_id = ");
-                }
-                query_builder.push_bind(transaction_id);
+                let param_num = bind_values.len() + 1;
+                where_clauses.push(format!("transaction_id = ${}", param_num));
+                bind_values.push(transaction_id);
             }
         }
         
-        let query = query_builder.build();
-        let rows = query.fetch_all(&mut *db).await?;
+        if !where_clauses.is_empty() {
+            base_query.push_str(" WHERE ");
+            base_query.push_str(&where_clauses.join(" AND "));
+        }        
+        let rows = match bind_values.len() {
+            0 => sqlx::query(&base_query).fetch_all(&mut *db).await?,
+            1 => sqlx::query(&base_query).bind(bind_values[0]).fetch_all(&mut *db).await?,
+            2 => sqlx::query(&base_query).bind(bind_values[0]).bind(bind_values[1]).fetch_all(&mut *db).await?,
+            3 => sqlx::query(&base_query).bind(bind_values[0]).bind(bind_values[1]).bind(bind_values[2]).fetch_all(&mut *db).await?,
+            _ => return Err(sqlx::Error::ColumnNotFound("Too many filters".to_string())),
+        };
+        
         let mut payments = Vec::with_capacity(rows.len());
         for row in rows {
             let payment_id: String = row.get("id");
@@ -82,24 +96,30 @@ impl PembayaranRepository {
         }
         
         Ok(payments)
-    }   
-    
-    pub async fn update(mut db: PoolConnection<Any>, payment: &Payment) -> Result<Payment, sqlx::Error>{
+    }
+      pub async fn update(mut db: PoolConnection<Any>, payment: &Payment) -> Result<Payment, sqlx::Error>{
         let payment_method_str = payment.method.to_string();
         let status_str = payment.status.to_string();
-        
-        let result = sqlx::query("
+        sqlx::query("
             UPDATE payments
-            SET transaction_id = $1, amount = $2, payment_method = $3, status = $4, payment_date = $5, due_date = $6
+            SET transaction_id = $1, amount = $2, method = $3, status = $4, payment_date = $5, due_date = $6
             WHERE id = $7
-            RETURNING id, transaction_id, amount, payment_method, status, payment_date, due_date
         ")
         .bind(&payment.transaction_id)
         .bind(payment.amount)
         .bind(&payment_method_str)
         .bind(&status_str)
-        .bind(payment.payment_date.naive_utc().to_string())
-        .bind(payment.due_date.map(|d| d.naive_utc().to_string()))
+        .bind(payment.payment_date.to_rfc3339())
+        .bind(payment.due_date.map(|d| d.to_rfc3339()))
+        .bind(&payment.id)
+        .execute(&mut *db)
+        .await?;
+
+        let result = sqlx::query("
+            SELECT id, transaction_id, amount, method, status, payment_date, due_date
+            FROM payments
+            WHERE id = $1
+        ")
         .bind(&payment.id)
         .fetch_one(&mut *db)
         .await?;
@@ -111,9 +131,8 @@ impl PembayaranRepository {
         Ok(payment_with_installments)
     }
 
-    pub async fn update_payment_status(mut db: PoolConnection<Any>, payment_id: String, new_status: PaymentStatus, additional_amount: Option<f64>) -> Result<Payment, sqlx::Error> {
-        let payment_result = sqlx::query("
-            SELECT id, transaction_id, amount, payment_method, status, payment_date, due_date
+    pub async fn update_payment_status(mut db: PoolConnection<Any>, payment_id: String, new_status: PaymentStatus, additional_amount: Option<f64>) -> Result<Payment, sqlx::Error> {        let payment_result = sqlx::query("
+            SELECT id, transaction_id, amount, method, status, payment_date, due_date
             FROM payments
             WHERE id = $1
         ")
@@ -151,8 +170,7 @@ impl PembayaranRepository {
         
         Ok(())
     }
-    
-    pub async fn add_installment(db: &mut PoolConnection<Any>, installment: &Installment) -> Result<(), sqlx::Error> {
+      pub async fn add_installment(db: &mut PoolConnection<Any>, installment: &Installment) -> Result<(), sqlx::Error> {
         sqlx::query("
             INSERT INTO installments (id, payment_id, amount, payment_date)
             VALUES ($1, $2, $3, $4)
@@ -160,21 +178,23 @@ impl PembayaranRepository {
         .bind(&installment.id)
         .bind(&installment.payment_id)
         .bind(installment.amount)
-        .bind(installment.payment_date.naive_utc().to_string())
+        .bind(installment.payment_date.to_rfc3339())
         .execute(&mut **db)
         .await?;
         
         Ok(())
-    }
-    pub async fn load_payment_with_installments(db: &mut PoolConnection<Any>, payment_id: &str) -> Result<Payment, sqlx::Error> {
+    }    pub async fn load_payment_with_installments(db: &mut PoolConnection<Any>, payment_id: &str) -> Result<Payment, sqlx::Error> {        
         let payment_row = sqlx::query("
-            SELECT id, transaction_id, amount, payment_method, status, payment_date, due_date
+            SELECT id, transaction_id, amount, method, status, payment_date, due_date
             FROM payments
             WHERE id = $1
         ")
         .bind(payment_id)
         .fetch_one(&mut **db)
-        .await?;
+        .await
+        .map_err(|e| {
+            e
+        })?;
         
         let mut payment = Self::parse_row_to_payment(payment_row)?;
         
@@ -198,15 +218,15 @@ impl PembayaranRepository {
         
         Ok(payment)
     }
-    
-    fn parse_row_to_payment(row: AnyRow) -> Result<Payment, sqlx::Error> {
+      fn parse_row_to_payment(row: AnyRow) -> Result<Payment, sqlx::Error> {
         let id: String = row.get("id");
         let transaction_id: String = row.get("transaction_id");
-        let amount: f64 = row.get("amount");
-        let payment_method_str: String = row.get("payment_method");
+        let amount: f64 = row.try_get("amount").unwrap_or_else(|_| {
+            row.try_get::<f32, _>("amount").map(|v| v as f64).unwrap_or(0.0)
+        });        let payment_method_str: String = row.get("method");
         let status_str: String = row.get("status");
         let payment_date_str: String = row.get("payment_date");
-        let due_date_str: Option<String> = row.get("due_date");
+        let due_date_str: Option<String> = row.try_get("due_date").ok();
         
         let payment_method = match payment_method_str.as_str() {
             "CASH" => PaymentMethod::Cash,
@@ -215,19 +235,36 @@ impl PembayaranRepository {
             "E_WALLET" => PaymentMethod::EWallet,
             _ => return Err(sqlx::Error::RowNotFound),
         };
-        
-        let payment_status = PaymentStatus::from_string(&status_str)
-            .ok_or(sqlx::Error::RowNotFound)?;
-        
-        let payment_date = DateTime::parse_from_rfc3339(&payment_date_str)
-            .map_err(|_| sqlx::Error::RowNotFound)?
-            .with_timezone(&Utc);
-            
-        let due_date = due_date_str
-            .map(|d| DateTime::parse_from_rfc3339(&d))
+          let payment_status = PaymentStatus::from_string(&status_str)
+            .ok_or(sqlx::Error::RowNotFound)?;        let payment_date = DateTime::parse_from_rfc3339(&payment_date_str)
+            .map(|dt| dt.with_timezone(&Utc))
+            .or_else(|_| {
+                NaiveDateTime::parse_from_str(&payment_date_str, "%Y-%m-%d %H:%M:%S%.f")
+                    .or_else(|_| {
+                        NaiveDateTime::parse_from_str(&payment_date_str, "%Y-%m-%d %H:%M:%S")
+                    })
+                    .map(|naive_dt| naive_dt.and_utc())
+            })
+            .map_err(|e| {
+                eprintln!("Failed to parse payment_date '{}': {}", payment_date_str, e);
+                sqlx::Error::RowNotFound
+            })?;        let due_date = due_date_str
+            .map(|d| {
+                DateTime::parse_from_rfc3339(&d)
+                    .map(|dt| dt.with_timezone(&Utc))
+                    .or_else(|_| {
+                        NaiveDateTime::parse_from_str(&d, "%Y-%m-%d %H:%M:%S%.f")
+                            .or_else(|_| {
+                                NaiveDateTime::parse_from_str(&d, "%Y-%m-%d %H:%M:%S")
+                            })
+                            .map(|naive_dt| naive_dt.and_utc())
+                    })
+            })
             .transpose()
-            .map_err(|_| sqlx::Error::RowNotFound)?
-            .map(|dt| dt.with_timezone(&Utc));
+            .map_err(|e| {
+                eprintln!("Failed to parse due_date: {}", e);
+                sqlx::Error::RowNotFound
+            })?;
         
         Ok(Payment {
             id,
@@ -240,16 +277,25 @@ impl PembayaranRepository {
             due_date,
         })
     }
-    
-    fn parse_row_to_installment(row: AnyRow) -> Result<Installment, sqlx::Error> {
+      fn parse_row_to_installment(row: AnyRow) -> Result<Installment, sqlx::Error> {
         let id: String = row.get("id");
         let payment_id: String = row.get("payment_id");
-        let amount: f64 = row.get("amount");
-        let payment_date_str: String = row.get("payment_date");
-        
-        let payment_date = DateTime::parse_from_rfc3339(&payment_date_str)
-            .map_err(|_| sqlx::Error::RowNotFound)?
-            .with_timezone(&Utc);
+        let amount: f64 = row.try_get("amount").unwrap_or_else(|_| {
+            row.try_get::<f32, _>("amount").map(|v| v as f64).unwrap_or(0.0)
+        });
+        let payment_date_str: String = row.get("payment_date");        let payment_date = DateTime::parse_from_rfc3339(&payment_date_str)
+            .map(|dt| dt.with_timezone(&Utc))
+            .or_else(|_| {
+                NaiveDateTime::parse_from_str(&payment_date_str, "%Y-%m-%d %H:%M:%S%.f")
+                    .or_else(|_| {
+                        NaiveDateTime::parse_from_str(&payment_date_str, "%Y-%m-%d %H:%M:%S")
+                    })
+                    .map(|naive_dt| naive_dt.and_utc())
+            })
+            .map_err(|e| {
+                eprintln!("Failed to parse installment payment_date '{}': {}", payment_date_str, e);
+                sqlx::Error::RowNotFound
+            })?;
         
         Ok(Installment {
             id,
