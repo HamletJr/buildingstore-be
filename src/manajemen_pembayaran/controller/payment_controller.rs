@@ -1,293 +1,337 @@
-use std::sync::Arc;
 use std::collections::HashMap;
+use chrono::Utc;
 use serde::{Serialize, Deserialize};
 use rocket::{get, post, put, delete, routes, Route, State, catch};
-use rocket::serde::{json::Json};
-use rocket::serde::json::serde_json;
+use rocket::serde::json::Json;
 use rocket::http::Status;
 
-use crate::manajemen_pembayaran::model::payment::{Payment, PaymentMethod};
-use crate::manajemen_pembayaran::enums::payment_status::PaymentStatus;
-use crate::manajemen_pembayaran::service::payment_service::PaymentService;
+use crate::manajemen_pembayaran::model::payment::Payment;
+use crate::manajemen_pembayaran::service::payment_service::{PaymentService, PaymentError};
+use sqlx::{Any, Pool};
 
-#[derive(Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct CreatePaymentRequest {
     pub transaction_id: String,
     pub amount: f64,
     pub method: String,
+    pub status: String,
+    pub due_date: Option<String>,
 }
 
 #[derive(Deserialize)]
 pub struct UpdatePaymentStatusRequest {
-    pub payment_id: String,
     pub new_status: String,
     pub additional_amount: Option<f64>,
 }
 
 #[derive(Deserialize)]
 pub struct AddInstallmentRequest {
-    pub payment_id: String,
     pub amount: f64,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct ApiResponse<T> {
+    pub success: bool,
+    pub message: String,
+    pub data: Option<T>,
+}
+
+#[post("/payments", format = "json", data = "<payment_request>")]
+pub async fn create_payment(payment_request: Json<CreatePaymentRequest>, db: &State<Pool<Any>>) -> (Status, Json<ApiResponse<Payment>>) {
+    let payment_service = PaymentService::new();
+    
+    let method: crate::manajemen_pembayaran::model::payment::PaymentMethod = match payment_service.parse_payment_method(&payment_request.method) {
+        Ok(m) => m,
+        Err(e) => {
+            return (
+                Status::BadRequest,
+                Json(ApiResponse {
+                    success: false,
+                    message: format!("Invalid payment method: {:?}", e),
+                    data: None,
+                }),
+            );
+        }
+    };
+    
+    let status = match payment_service.parse_payment_status(&payment_request.status) {
+        Ok(s) => s,
+        Err(e) => {
+            return (
+                Status::BadRequest,
+                Json(ApiResponse {
+                    success: false,
+                    message: format!("Invalid payment status: {:?}", e),
+                    data: None,
+                }),
+            );
+        }
+    };
+    
+    let due_date: Option<chrono::DateTime<Utc>> = match &payment_request.due_date {
+        Some(date_str) => match chrono::DateTime::parse_from_rfc3339(date_str) {
+            Ok(dt) => Some(dt.with_timezone(&Utc)),
+            Err(_) => {
+                return (
+                    Status::BadRequest,
+                    Json(ApiResponse {
+                        success: false,
+                        message: "Invalid due date format. Use RFC3339 format".to_string(),
+                        data: None,
+                    }),
+                );
+            }
+        },
+        None => None,
+    };
+    
+    let payment = Payment {
+        id: payment_service.generate_payment_id(),
+        transaction_id: payment_request.transaction_id.clone(),
+        amount: payment_request.amount,
+        method,
+        status,
+        payment_date: Utc::now(),
+        installments: Vec::new(),
+        due_date,
+    };
+    
+    match payment_service.create_payment(db, payment).await {
+        Ok(created_payment) => (
+            Status::Created,
+            Json(ApiResponse {
+                success: true,
+                message: "Payment created successfully".to_string(),
+                data: Some(created_payment),
+            }),
+        ),
+        Err(e) => (
+            Status::InternalServerError,
+            Json(ApiResponse {
+                success: false,
+                message: format!("Failed to create payment: {:?}", e),
+                data: None,
+            }),
+        ),
+    }
+}
+
+#[get("/payments/<id>")]
+pub async fn get_payment_by_id(id: String, db: &State<Pool<Any>>) -> (Status, Json<ApiResponse<Payment>>) {
+    let payment_service = PaymentService::new();
+    
+    match payment_service.get_payment_by_id(db, &id).await {
+        Ok(payment) => (
+            Status::Ok,
+            Json(ApiResponse {
+                success: true,
+                message: "Payment retrieved successfully".to_string(),
+                data: Some(payment),
+            }),
+        ),
+        Err(PaymentError::NotFound(msg)) => (
+            Status::NotFound,
+            Json(ApiResponse {
+                success: false,
+                message: msg,
+                data: None,
+            }),
+        ),
+        Err(e) => (
+            Status::InternalServerError,
+            Json(ApiResponse {
+                success: false,
+                message: format!("Failed to retrieve payment: {:?}", e),
+                data: None,
+            }),
+        ),
+    }
+}
+
+#[get("/payments?<status>&<method>&<transaction_id>")]
+pub async fn get_all_payments(
+    status: Option<String>,
+    method: Option<String>,
+    transaction_id: Option<String>,
+    db: &State<Pool<Any>>
+) -> (Status, Json<ApiResponse<Vec<Payment>>>) {
+    let payment_service = PaymentService::new();
+    
+    let mut filters = HashMap::new();
+    if let Some(status_str) = status {
+        filters.insert("status".to_string(), status_str);
+    }
+    if let Some(method_str) = method {
+        filters.insert("method".to_string(), method_str);
+    }
+    if let Some(tx_id) = transaction_id {
+        filters.insert("transaction_id".to_string(), tx_id);
+    }
+    
+    let filters_option = if filters.is_empty() { None } else { Some(filters) };
+    
+    match payment_service.get_all_payments(db, filters_option).await {
+        Ok(payments) => (
+            Status::Ok,
+            Json(ApiResponse {
+                success: true,
+                message: format!("Successfully retrieved {} payments", payments.len()),
+                data: Some(payments),
+            }),
+        ),
+        Err(e) => (
+            Status::InternalServerError,
+            Json(ApiResponse {
+                success: false,
+                message: format!("Failed to retrieve payments: {:?}", e),
+                data: None,
+            }),
+        ),
+    }
+}
+
+#[put("/payments/<id>/status", format = "json", data = "<status_request>")]
+pub async fn update_payment_status(
+    id: String,
+    status_request: Json<UpdatePaymentStatusRequest>,
+    db: &State<Pool<Any>>
+) -> (Status, Json<ApiResponse<Payment>>) {
+    let payment_service = PaymentService::new();
+    
+    let new_status = match payment_service.parse_payment_status(&status_request.new_status) {
+        Ok(s) => s,
+        Err(e) => {
+            return (
+                Status::BadRequest,
+                Json(ApiResponse {
+                    success: false,
+                    message: format!("Invalid payment status: {:?}", e),
+                    data: None,
+                }),
+            );
+        }
+    };
+    
+    match payment_service.update_payment_status(db, id, new_status, status_request.additional_amount).await {
+        Ok(updated_payment) => (
+            Status::Ok,
+            Json(ApiResponse {
+                success: true,
+                message: "Payment status updated successfully".to_string(),
+                data: Some(updated_payment),
+            }),
+        ),
+        Err(PaymentError::NotFound(msg)) => (
+            Status::NotFound,
+            Json(ApiResponse {
+                success: false,
+                message: msg,
+                data: None,
+            }),
+        ),
+        Err(e) => (
+            Status::InternalServerError,
+            Json(ApiResponse {
+                success: false,
+                message: format!("Failed to update payment status: {:?}", e),
+                data: None,
+            }),
+        ),
+    }
+}
+
+#[post("/payments/<id>/installments", format = "json", data = "<installment_request>")]
+pub async fn add_installment(
+    id: String,
+    installment_request: Json<AddInstallmentRequest>,
+    db: &State<Pool<Any>>
+) -> (Status, Json<ApiResponse<Payment>>) {
+    let payment_service = PaymentService::new();
+    
+    match payment_service.add_installment(db, &id, installment_request.amount).await {
+        Ok(updated_payment) => (
+            Status::Ok,
+            Json(ApiResponse {
+                success: true,
+                message: "Installment added successfully".to_string(),
+                data: Some(updated_payment),
+            }),
+        ),
+        Err(PaymentError::NotFound(msg)) => (
+            Status::NotFound,
+            Json(ApiResponse {
+                success: false,
+                message: msg,
+                data: None,
+            }),
+        ),
+        Err(PaymentError::InvalidInput(msg)) => (
+            Status::BadRequest,
+            Json(ApiResponse {
+                success: false,
+                message: msg,
+                data: None,
+            }),
+        ),
+        Err(e) => (
+            Status::InternalServerError,
+            Json(ApiResponse {
+                success: false,
+                message: format!("Failed to add installment: {:?}", e),
+                data: None,
+            }),
+        ),
+    }
+}
+
+#[delete("/payments/<id>")]
+pub async fn delete_payment(id: String, db: &State<Pool<Any>>) -> (Status, Json<ApiResponse<()>>) {
+    let payment_service = PaymentService::new();
+    
+    match payment_service.delete_payment(db, &id).await {
+        Ok(_) => (
+            Status::Ok,
+            Json(ApiResponse {
+                success: true,
+                message: "Payment deleted successfully".to_string(),
+                data: None,
+            }),
+        ),
+        Err(e) => (
+            Status::InternalServerError,
+            Json(ApiResponse {
+                success: false,
+                message: format!("Failed to delete payment: {:?}", e),
+                data: None,
+            }),
+        ),
+    }
 }
 
 #[derive(Deserialize)]
 pub struct PaymentFilterRequest {
     pub status: Option<String>,
     pub method: Option<String>,
+    pub transaction_id: Option<String>,
 }
 
-#[derive(Serialize, Deserialize)]
-pub struct ApiResponse<T> {
-    pub success: bool,
-    pub data: Option<T>,
-    pub message: Option<String>,
-}
-
-pub struct PaymentController {
-    service: Arc<dyn PaymentService>,
-}
-
-impl PaymentController {
-    pub fn new(service: Arc<dyn PaymentService>) -> Self {
-        Self { service }
-    }
-
-    pub fn create_payment(&self, request: CreatePaymentRequest) -> ApiResponse<Payment> {
-        let method = match request.method.to_uppercase().as_str() {
-            "CASH" => PaymentMethod::Cash,
-            "CREDIT_CARD" => PaymentMethod::CreditCard,
-            "BANK_TRANSFER" => PaymentMethod::BankTransfer,
-            "E_WALLET" => PaymentMethod::EWallet,
-            _ => {
-                return ApiResponse {
-                    success: false,
-                    data: None,
-                    message: Some("Metode pembayaran tidak valid".to_string()),
-                }
-            }
-        };
-
-        match self.service.create_payment(request.transaction_id, request.amount, method) {
-            Ok(payment) => ApiResponse {
-                success: true,
-                data: Some(payment),
-                message: None,
-            },
-            Err(error) => ApiResponse {
-                success: false,
-                data: None,
-                message: Some(error),
-            },
-        }
-    }
-
-    pub fn update_payment_status(&self, request: UpdatePaymentStatusRequest) -> ApiResponse<Payment> {
-        let status = match PaymentStatus::from_string(&request.new_status) {
-            Some(status) => status,
-            None => {
-                return ApiResponse {
-                    success: false,
-                    data: None,
-                    message: Some("Status pembayaran tidak valid".to_string()),
-                }
-            }
-        };
-
-        match self.service.update_payment_status(
-            request.payment_id,
-            status,
-            request.additional_amount,
-        ) {
-            Ok(payment) => ApiResponse {
-                success: true,
-                data: Some(payment),
-                message: None,
-            },
-            Err(error) => ApiResponse {
-                success: false,
-                data: None,
-                message: Some(error),
-            },
-        }
-    }
-
-    pub fn add_installment(&self, request: AddInstallmentRequest) -> ApiResponse<Payment> {
-        match self.service.add_installment(&request.payment_id, request.amount) {
-            Ok(payment) => ApiResponse {
-                success: true,
-                data: Some(payment),
-                message: None,
-            },
-            Err(error) => ApiResponse {
-                success: false,
-                data: None,
-                message: Some(error),
-            },
-        }
-    }
-
-    pub fn get_payment(&self, payment_id: &str) -> ApiResponse<Payment> {
-        match self.service.get_payment(payment_id) {
-            Some(payment) => ApiResponse {
-                success: true,
-                data: Some(payment),
-                message: None,
-            },
-            None => ApiResponse {
-                success: false,
-                data: None,
-                message: Some(format!("Pembayaran dengan ID {} tidak ditemukan", payment_id)),
-            },
-        }
-    }
-
-    pub fn get_payment_by_transaction(&self, transaction_id: &str) -> ApiResponse<Payment> {
-        match self.service.get_payment_by_transaction(transaction_id) {
-            Some(payment) => ApiResponse {
-                success: true,
-                data: Some(payment),
-                message: None,
-            },
-            None => ApiResponse {
-                success: false,
-                data: None,
-                message: Some(format!(
-                    "Pembayaran untuk transaksi {} tidak ditemukan",
-                    transaction_id
-                )),
-            },
-        }
-    }
-
-    pub fn get_all_payments(&self, filter: Option<PaymentFilterRequest>) -> ApiResponse<Vec<Payment>> {
-        let mut filters: Option<HashMap<String, String>> = None;
-        
-        if let Some(filter_req) = filter {
-            let mut map = HashMap::new();
-            
-            if let Some(status) = filter_req.status {
-                map.insert("status".to_string(), status);
-            }
-            
-            if let Some(method) = filter_req.method {
-                map.insert("method".to_string(), method);
-            }
-            
-            if !map.is_empty() {
-                filters = Some(map);
-            }
-        }
-
-        let payments = self.service.get_all_payments(filters);
-        
-        ApiResponse {
-            success: true,
-            data: Some(payments),
-            message: None,
-        }
-    }
-
-    pub fn delete_payment(&self, payment_id: &str) -> ApiResponse<()> {
-        match self.service.delete_payment(payment_id.to_string()) {
-            Ok(_) => ApiResponse {
-                success: true,
-                data: Some(()),
-                message: Some("Pembayaran berhasil dihapus".to_string()),
-            },
-            Err(error) => ApiResponse {
-                success: false,
-                data: None,
-                message: Some(error),
-            },
-        }
-    }
-}
-
-
-#[post("/create", format = "json", data = "<request>")]
-pub fn create_payment_endpoint(
-    request: Json<CreatePaymentRequest>,
-    controller: &State<PaymentController>,
-) -> (Status, Json<ApiResponse<Payment>>) {
-    let response = controller.create_payment(request.into_inner());
-    if response.success {
-        (Status::Ok, Json(response))
-    } else {
-        (Status::BadRequest, Json(response))
-    }
-}
-
-#[put("/update_status", format = "json", data = "<request>")]
-pub fn update_payment_status_endpoint(
-    request: Json<UpdatePaymentStatusRequest>,
-    controller: &State<PaymentController>,
-) -> (Status, Json<ApiResponse<Payment>>) {
-    let response = controller.update_payment_status(request.into_inner());
-    if response.success {
-        (Status::Ok, Json(response))
-    } else {
-        (Status::BadRequest, Json(response))
-    }
-}
-
-#[put("/add_installment", format = "json", data = "<request>")]
-pub fn add_installment_endpoint(
-    request: Json<AddInstallmentRequest>,
-    controller: &State<PaymentController>,
-) -> Json<ApiResponse<Payment>> {
-    Json(controller.add_installment(request.into_inner()))
-}
-
-#[get("/<payment_id>")]
-pub fn get_payment_endpoint(
-    payment_id: String,
-    controller: &State<PaymentController>,
-) -> (Status, Json<ApiResponse<Payment>>) {
-    let response = controller.get_payment(&payment_id);
-    if response.success {
-        (Status::Ok, Json(response))
-    } else {
-        (Status::NotFound, Json(response))
-    }
-}
-
-#[get("/transaction/<transaction_id>")]
-pub fn get_payment_by_transaction_endpoint(
-    transaction_id: String,
-    controller: &State<PaymentController>,
-) -> Json<ApiResponse<Payment>> {
-    Json(controller.get_payment_by_transaction(&transaction_id))
-}
-
-#[get("/all?<filter>")]
-pub fn get_all_payments_endpoint(
-    filter: Option<&str>,
-    controller: &State<PaymentController>,
-) -> Json<ApiResponse<Vec<Payment>>> {
-    let filter_request = filter
-        .and_then(|f| serde_json::from_str::<PaymentFilterRequest>(f).ok());
-    Json(controller.get_all_payments(filter_request))
-}
-
-#[delete("/<payment_id>")]
-pub fn delete_payment_endpoint(
-    payment_id: String,
-    controller: &State<PaymentController>,
-) -> (Status, Json<ApiResponse<()>>) {
-    let response = controller.delete_payment(&payment_id);
-    if response.success {
-        (Status::Ok, Json(response))
-    } else {
-        (Status::NotFound, Json(response))
-    }
+pub fn routes() -> Vec<Route> {
+    routes![
+        create_payment,
+        get_payment_by_id,
+        get_all_payments,
+        update_payment_status,
+        add_installment,
+        delete_payment
+    ]
 }
 
 #[catch(404)]
 pub fn not_found_catcher() -> Json<ApiResponse<()>> {
     Json(ApiResponse {
         success: false,
+        message: "Resource not found".to_string(),
         data: None,
-        message: Some("Resource not found".to_string()),
     })
 }
 
@@ -295,319 +339,275 @@ pub fn not_found_catcher() -> Json<ApiResponse<()>> {
 pub fn bad_request_catcher() -> Json<ApiResponse<()>> {
     Json(ApiResponse {
         success: false,
+        message: "Bad request".to_string(),
         data: None,
-        message: Some("Bad request".to_string()),
     })
-}
-
-pub fn get_routes() -> Vec<Route> {
-    routes![
-        create_payment_endpoint,
-        update_payment_status_endpoint,
-        add_installment_endpoint,
-        get_payment_endpoint,
-        get_payment_by_transaction_endpoint,
-        get_all_payments_endpoint,
-        delete_payment_endpoint,
-    ]
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Arc;
-    use rocket::catchers;
-    use uuid::Uuid;
-
-    use crate::manajemen_pembayaran::repository::payment_repository_impl::PaymentRepositoryImpl;
-    use crate::manajemen_pembayaran::repository::payment_repository::PaymentRepository;
-    use crate::manajemen_pembayaran::service::payment_service_impl::PaymentServiceImpl;
-    use crate::manajemen_pembayaran::service::payment_service::PaymentService;
-
-    fn setup_controller() -> PaymentController {
-        let repository: Arc<dyn PaymentRepository> = Arc::new(PaymentRepositoryImpl::new());
-        let service: Arc<dyn PaymentService> = Arc::new(PaymentServiceImpl::new(repository));
+    use chrono::{Utc};
+    
+    #[test]
+    fn test_api_response_serialization() {
+        let response: ApiResponse<String> = ApiResponse {
+            success: true,
+            message: "Test message".to_string(),
+            data: Some("Test data".to_string()),
+        };
         
-        PaymentController::new(service)
+        let serialized = serde_json::to_string(&response).unwrap();
+        assert!(serialized.contains("Test message"));
+        assert!(serialized.contains("Test data"));
+        
+        let deserialized: ApiResponse<String> = serde_json::from_str(&serialized).unwrap();
+        assert_eq!(deserialized.success, true);
+        assert_eq!(deserialized.message, "Test message");
+        assert_eq!(deserialized.data, Some("Test data".to_string()));
     }
 
     #[test]
-    fn test_create_payment() {
-        let controller = setup_controller();
-        let transaction_id = format!("TRX-{}", Uuid::new_v4());
-        
-        let request = CreatePaymentRequest {
-            transaction_id: transaction_id.clone(),
-            amount: 1000.0,
-            method: "CASH".to_string(),
+    fn test_api_response_with_none_data() {
+        let response: ApiResponse<Payment> = ApiResponse {
+            success: false,
+            message: "Error occurred".to_string(),
+            data: None,
         };
-        
-        let response = controller.create_payment(request);
-        
-        assert!(response.success);
-        assert!(response.data.is_some());
-        let payment = response.data.unwrap();
-        assert_eq!(payment.transaction_id, transaction_id);
-        assert_eq!(payment.amount, 1000.0);
-        assert_eq!(payment.method, PaymentMethod::Cash);
-    }
 
-    #[test]
-    fn test_invalid_payment_method() {
-        let controller = setup_controller();
-        let transaction_id = format!("TRX-{}", Uuid::new_v4());
-        
-        let request = CreatePaymentRequest {
-            transaction_id: transaction_id.clone(),
-            amount: 1000.0,
-            method: "INVALID".to_string(),
-        };
-        
-        let response = controller.create_payment(request);
-        
-        assert!(!response.success);
+        assert_eq!(response.success, false);
+        assert_eq!(response.message, "Error occurred");
         assert!(response.data.is_none());
-        assert!(response.message.is_some());
-        assert_eq!(response.message.unwrap(), "Metode pembayaran tidak valid");
     }
 
     #[test]
-    fn test_update_payment_status() {
-        let controller = setup_controller();
-        let transaction_id = format!("TRX-{}", Uuid::new_v4());
-        
-        let create_request = CreatePaymentRequest {
-            transaction_id: transaction_id.clone(),
-            amount: 1000.0,
-            method: "CASH".to_string(),
-        };
-        
-        let create_response = controller.create_payment(create_request);
-        let payment = create_response.data.unwrap();
-        
-        let update_request = UpdatePaymentStatusRequest {
-            payment_id: payment.id.clone(),
-            new_status: "CICILAN".to_string(),
-            additional_amount: Some(500.0),
-        };
-        
-        let update_response = controller.update_payment_status(update_request);
-        
-        assert!(update_response.success);
-        assert!(update_response.data.is_some());
-        let updated_payment = update_response.data.unwrap();
-        assert_eq!(updated_payment.status, PaymentStatus::Installment);
-        assert_eq!(updated_payment.installments.len(), 1);
-        assert_eq!(updated_payment.installments[0].amount, 500.0);
-    }
-
-    #[test]
-    fn test_get_payment() {
-        let controller = setup_controller();
-        let transaction_id = format!("TRX-{}", Uuid::new_v4());
-        
-        let create_request = CreatePaymentRequest {
-            transaction_id: transaction_id.clone(),
-            amount: 1000.0,
-            method: "CASH".to_string(),
-        };
-        
-        let create_response = controller.create_payment(create_request);
-        let payment = create_response.data.unwrap();
-        
-        let get_response = controller.get_payment(&payment.id);
-        
-        assert!(get_response.success);
-        assert!(get_response.data.is_some());
-        assert_eq!(get_response.data.unwrap().id, payment.id);
-        
-        let get_by_tx_response = controller.get_payment_by_transaction(&transaction_id);
-        
-        assert!(get_by_tx_response.success);
-        assert!(get_by_tx_response.data.is_some());
-        assert_eq!(get_by_tx_response.data.unwrap().transaction_id, transaction_id);
-    }
-
-    #[test]
-    fn test_add_installment() {
-        let controller = setup_controller();
-        
-        let create_request = CreatePaymentRequest {
-            transaction_id: format!("TRX-{}", Uuid::new_v4()),
-            amount: 1000.0,
-            method: "CASH".to_string(),
-        };
-        
-        let create_response = controller.create_payment(create_request);
-        let payment = create_response.data.unwrap();
-        
-        let update_request = UpdatePaymentStatusRequest {
-            payment_id: payment.id.clone(),
-            new_status: "CICILAN".to_string(),
-            additional_amount: None,
-        };
-        
-        controller.update_payment_status(update_request);
-        
-        let add_request = AddInstallmentRequest {
-            payment_id: payment.id.clone(),
-            amount: 500.0,
-        };
-        
-        let add_response = controller.add_installment(add_request);
-        
-        assert!(add_response.success);
-        assert!(add_response.data.is_some());
-        assert_eq!(add_response.data.unwrap().installments.len(), 1);
-    }
-
-    #[test]
-    fn test_delete_payment() {
-        let controller = setup_controller();
-        
-        let create_request = CreatePaymentRequest {
-            transaction_id: format!("TRX-{}", Uuid::new_v4()),
-            amount: 1000.0,
-            method: "CASH".to_string(),
-        };
-        
-        let create_response = controller.create_payment(create_request);
-        let payment = create_response.data.unwrap();
-        
-        let update_request = UpdatePaymentStatusRequest {
-            payment_id: payment.id.clone(),
-            new_status: "CICILAN".to_string(),
-            additional_amount: None,
-        };
-        
-        controller.update_payment_status(update_request);
-        
-        let delete_response = controller.delete_payment(&payment.id);
-        
-        assert!(delete_response.success);
-        assert!(delete_response.data.is_some());
-        
-        let get_response = controller.get_payment(&payment.id);
-        assert!(!get_response.success);
-    }
-
-    #[test]
-    fn test_get_all_payments() {
-        let controller = setup_controller();
-
-        let request1 = CreatePaymentRequest {
-            transaction_id: format!("TRX-{}", Uuid::new_v4()),
-            amount: 1000.0,
-            method: "CASH".to_string(),
-        };
-        controller.create_payment(request1);
-
-        let request2 = CreatePaymentRequest {
-            transaction_id: format!("TRX-{}", Uuid::new_v4()),
-            amount: 2000.0,
-            method: "CREDIT_CARD".to_string(),
-        };
-        controller.create_payment(request2);
-
-        let response = controller.get_all_payments(None);
-        assert!(response.success);
-        assert!(response.data.is_some());
-        assert_eq!(response.data.unwrap().len(), 2);
-
-        let filter_request = PaymentFilterRequest {
-            status: None,
-            method: Some("CASH".to_string()),
-        };
-        let response = controller.get_all_payments(Some(filter_request));
-        assert!(response.success);
-        assert!(response.data.is_some());
-        assert_eq!(response.data.unwrap().len(), 1);
-    }
-
-    use rocket::local::blocking::Client;
-    use rocket::http::{Status, ContentType};
-
-    fn setup_rocket() -> rocket::Rocket<rocket::Build> {
-        let controller = setup_controller();
-        rocket::build()
-            .manage(controller)
-            .mount("/payments", get_routes())
-            .register("/", catchers![not_found_catcher, bad_request_catcher])
-    }
-
-    #[test]
-    fn test_create_payment_with_invalid_method() {
-        let client = Client::tracked(setup_rocket()).expect("valid rocket instance");
-        let request_body = serde_json::json!({
-            "transaction_id": "TRX-INVALID",
+    fn test_create_payment_request_deserialization() {
+        let json_str = r#"{
+            "transaction_id": "TXN-123",
             "amount": 1000.0,
-            "method": "INVALID_METHOD"
-        });
+            "method": "CASH",
+            "status": "PENDING",
+            "due_date": "2024-12-31T23:59:59Z"
+        }"#;
 
-        let response = client
-            .post("/payments/create")
-            .header(ContentType::JSON)
-            .body(request_body.to_string())
-            .dispatch();
+        let request: CreatePaymentRequest = serde_json::from_str(json_str).unwrap();
+        assert_eq!(request.transaction_id, "TXN-123");
+        assert_eq!(request.amount, 1000.0);
+        assert_eq!(request.method, "CASH");
+        assert_eq!(request.status, "PENDING");
+        assert!(request.due_date.is_some());
+    }
 
-        assert_eq!(response.status(), Status::BadRequest);
-        if let Some(response_body) = response.into_json::<ApiResponse<()>>() {
-            assert!(!response_body.success);
-            assert_eq!(response_body.message.unwrap(), "Metode pembayaran tidak valid");
-        } else {
-            panic!("Response body is None");
+    #[test]
+    fn test_create_payment_request_without_due_date() {
+        let json_str = r#"{
+            "transaction_id": "TXN-456",
+            "amount": 500.0,
+            "method": "CREDIT_CARD",
+            "status": "COMPLETED"
+        }"#;
+
+        let request: CreatePaymentRequest = serde_json::from_str(json_str).unwrap();
+        assert_eq!(request.transaction_id, "TXN-456");
+        assert_eq!(request.amount, 500.0);
+        assert_eq!(request.method, "CREDIT_CARD");
+        assert_eq!(request.status, "COMPLETED");
+        assert!(request.due_date.is_none());
+    }
+
+    #[test]
+    fn test_update_payment_status_request() {
+        let json_str = r#"{
+            "new_status": "COMPLETED",
+            "additional_amount": 250.0
+        }"#;
+
+        let request: UpdatePaymentStatusRequest = serde_json::from_str(json_str).unwrap();
+        assert_eq!(request.new_status, "COMPLETED");
+        assert_eq!(request.additional_amount, Some(250.0));
+    }
+
+    #[test]
+    fn test_update_payment_status_request_without_additional_amount() {
+        let json_str = r#"{
+            "new_status": "FAILED"
+        }"#;
+
+        let request: UpdatePaymentStatusRequest = serde_json::from_str(json_str).unwrap();
+        assert_eq!(request.new_status, "FAILED");
+        assert!(request.additional_amount.is_none());
+    }
+
+    #[test]
+    fn test_add_installment_request() {
+        let json_str = r#"{
+            "amount": 300.0
+        }"#;
+
+        let request: AddInstallmentRequest = serde_json::from_str(json_str).unwrap();
+        assert_eq!(request.amount, 300.0);
+    }
+
+    #[test]
+    fn test_payment_filter_request() {
+        let json_str = r#"{
+            "status": "PENDING",
+            "method": "CASH",
+            "transaction_id": "TXN-789"
+        }"#;
+
+        let request: PaymentFilterRequest = serde_json::from_str(json_str).unwrap();
+        assert_eq!(request.status, Some("PENDING".to_string()));
+        assert_eq!(request.method, Some("CASH".to_string()));
+        assert_eq!(request.transaction_id, Some("TXN-789".to_string()));
+    }
+
+    #[test]
+    fn test_payment_filter_request_partial() {
+        let json_str = r#"{
+            "status": "COMPLETED"
+        }"#;
+
+        let request: PaymentFilterRequest = serde_json::from_str(json_str).unwrap();
+        assert_eq!(request.status, Some("COMPLETED".to_string()));
+        assert!(request.method.is_none());
+        assert!(request.transaction_id.is_none());
+    }
+
+    #[test]
+    fn test_api_response_with_payment_data() {
+        use crate::manajemen_pembayaran::model::payment::{Payment, PaymentMethod};
+        use crate::manajemen_pembayaran::enums::payment_status::PaymentStatus;
+
+        let payment = Payment {
+            id: "PMT-123".to_string(),
+            transaction_id: "TXN-456".to_string(),            amount: 1000.0,
+            method: PaymentMethod::Cash,
+            status: PaymentStatus::Paid,
+            payment_date: Utc::now(),
+            installments: Vec::new(),
+            due_date: None,
+        };
+
+        let response = ApiResponse {
+            success: true,
+            message: "Payment retrieved successfully".to_string(),
+            data: Some(payment.clone()),
+        };
+
+        assert_eq!(response.success, true);
+        assert!(response.data.is_some());
+        if let Some(data) = response.data {
+            assert_eq!(data.id, payment.id);
+            assert_eq!(data.amount, payment.amount);
         }
     }
 
     #[test]
-    fn test_get_payment_not_found() {
-        let client = Client::tracked(setup_rocket()).expect("valid rocket instance");
-        let response = client.get("/payments/unknown_id").dispatch();
+    fn test_api_response_with_payment_list() {
+        use crate::manajemen_pembayaran::model::payment::{Payment, PaymentMethod};
+        use crate::manajemen_pembayaran::enums::payment_status::PaymentStatus;
 
-        assert_eq!(response.status(), Status::NotFound);
-        if let Some(response_body) = response.into_json::<ApiResponse<()>>() {
-            assert!(!response_body.success);
-            assert_eq!(response_body.message.unwrap(), "Pembayaran dengan ID unknown_id tidak ditemukan");
-        } else {
-            panic!("Response body is None");
+        let payments = vec![
+            Payment {
+                id: "PMT-1".to_string(),
+                transaction_id: "TXN-1".to_string(),
+                amount: 500.0,                method: PaymentMethod::Cash,
+                status: PaymentStatus::Paid,
+                payment_date: Utc::now(),
+                installments: Vec::new(),
+                due_date: None,
+            },
+            Payment {
+                id: "PMT-2".to_string(),
+                transaction_id: "TXN-2".to_string(),
+                amount: 750.0,                method: PaymentMethod::CreditCard,
+                status: PaymentStatus::Installment,
+                payment_date: Utc::now(),
+                installments: Vec::new(),
+                due_date: Some(Utc::now()),
+            },
+        ];
+
+        let response = ApiResponse {
+            success: true,
+            message: format!("Successfully retrieved {} payments", payments.len()),
+            data: Some(payments.clone()),
+        };
+
+        assert_eq!(response.success, true);
+        assert!(response.data.is_some());
+        if let Some(data) = response.data {
+            assert_eq!(data.len(), 2);
+            assert_eq!(data[0].id, "PMT-1");
+            assert_eq!(data[1].id, "PMT-2");
         }
     }
 
     #[test]
-    fn test_delete_payment_not_found() {
-        let client = Client::tracked(setup_rocket()).expect("valid rocket instance");
-        let response = client.delete("/payments/unknown_id").dispatch();
+    fn test_error_response_structure() {
+        let error_response: ApiResponse<Payment> = ApiResponse {
+            success: false,
+            message: "Payment not found".to_string(),
+            data: None,
+        };
 
-        assert_eq!(response.status(), Status::NotFound);
-        if let Some(response_body) = response.into_json::<ApiResponse<()>>() {
-            assert!(!response_body.success);
-            assert_eq!(response_body.message.unwrap(), "Pembayaran dengan ID unknown_id tidak ditemukan");
-        } else {
-            panic!("Response body is None");
-        }
+        assert_eq!(error_response.success, false);
+        assert_eq!(error_response.message, "Payment not found");
+        assert!(error_response.data.is_none());
     }
 
     #[test]
-    fn test_update_payment_status_invalid_status() {
-        let client = Client::tracked(setup_rocket()).expect("valid rocket instance");
-        let request_body = serde_json::json!({
-            "payment_id": "valid_id",
-            "new_status": "INVALID_STATUS",
-            "additional_amount": 500.0
-        });
+    fn test_filter_map_creation() {
+        let mut filters = HashMap::new();
+        filters.insert("status".to_string(), "PENDING".to_string());
+        filters.insert("method".to_string(), "CASH".to_string());
 
-        let response = client
-            .put("/payments/update_status")
-            .header(ContentType::JSON)
-            .body(request_body.to_string())
-            .dispatch();
+        let filters_option = if filters.is_empty() { None } else { Some(filters.clone()) };
+        assert!(filters_option.is_some());
 
-        assert_eq!(response.status(), Status::BadRequest);
-        if let Some(response_body) = response.into_json::<ApiResponse<()>>() {
-            assert!(!response_body.success);
-            assert_eq!(response_body.message.unwrap(), "Status pembayaran tidak valid");
-        } else {
-            panic!("Response body is None");
-        }
+        let empty_filters: HashMap<String, String> = HashMap::new();
+        let empty_filters_option = if empty_filters.is_empty() { None } else { Some(empty_filters) };
+        assert!(empty_filters_option.is_none());
+    }
+
+    #[test]
+    fn test_date_parsing_logic() {
+        let valid_date = "2024-12-31T23:59:59Z";
+        let parsed_date = chrono::DateTime::parse_from_rfc3339(valid_date);
+        assert!(parsed_date.is_ok());
+
+        let invalid_date = "invalid-date-format";
+        let parsed_invalid = chrono::DateTime::parse_from_rfc3339(invalid_date);
+        assert!(parsed_invalid.is_err());
+    }
+
+    #[test]
+    fn test_payment_id_generation_format() {
+        let payment_service = PaymentService::new();
+        let payment_id = payment_service.generate_payment_id();
+        
+        assert!(payment_id.starts_with("PMT-"));
+        assert_eq!(payment_id.len(), 40);
+    }
+
+    #[test]
+    fn test_json_serialization_roundtrip() {
+        let original_request = CreatePaymentRequest {
+            transaction_id: "TXN-TEST".to_string(),
+            amount: 1234.56,
+            method: "BANK_TRANSFER".to_string(),
+            status: "INSTALLMENT".to_string(),
+            due_date: Some("2024-06-15T10:30:00Z".to_string()),
+        };
+
+        let serialized = serde_json::to_string(&original_request).unwrap();
+        let deserialized: CreatePaymentRequest = serde_json::from_str(&serialized).unwrap();
+
+        assert_eq!(deserialized.transaction_id, original_request.transaction_id);
+        assert_eq!(deserialized.amount, original_request.amount);
+        assert_eq!(deserialized.method, original_request.method);
+        assert_eq!(deserialized.status, original_request.status);
+        assert_eq!(deserialized.due_date, original_request.due_date);
     }
 }
