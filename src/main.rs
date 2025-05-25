@@ -51,6 +51,8 @@ async fn rocket() -> _ {
         .allowed_origins(AllowedOrigins::some_exact(&[
             "http://127.0.0.1:3000",
             "https://a10-buildingstore-fe.koyeb.app",
+            "http://localhost:3000",
+            "http://192.168.1.5:3000"
         ]))
         .allow_credentials(true)
         .to_cors()
