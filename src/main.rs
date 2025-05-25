@@ -14,6 +14,7 @@ pub mod manajemen_produk;
 pub mod manajemen_pelanggan;
 pub mod manajemen_pembayaran;
 pub mod transaksi_penjualan;
+pub mod manajemen_supplier;
 
 #[get("/")]
 fn index() -> &'static str {
@@ -77,5 +78,6 @@ async fn rocket() -> _ {
         .attach(manajemen_pelanggan::controller::route_stage())
         .attach(manajemen_pembayaran::controller::route_stage())
         .attach(transaksi_penjualan::controller::route_stage())
-        .mount("/", routes![index, test_db, metrics])
+        .attach(manajemen_supplier::controller::route_stage())
+        .mount("/", routes![index, test_db])
 }

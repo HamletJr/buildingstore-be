@@ -14,7 +14,7 @@ impl SupplierTransactionFactory {
             jenis_barang: supplier.jenis_barang.clone(),
             jumlah_barang: supplier.jumlah_barang,
             pengiriman_info: supplier.resi.clone(),
-            tanggal_transaksi: Utc::now(),
+            tanggal_transaksi: Utc::now().to_rfc3339(),
         }
     }
 }
@@ -38,7 +38,7 @@ mod tests {
             jenis_barang: "Ayam".to_string(),
             jumlah_barang: 1000,
             resi: "2306206282".to_string(),
-            updated_at: now,
+            updated_at: now.to_rfc3339(),
         };
 
         let transaction = SupplierTransactionFactory::create_from_supplier(&supplier);

@@ -1,20 +1,21 @@
-use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 /// Struct untuk supplier
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Supplier {
     pub id: String,
     pub name: String,
     pub jenis_barang: String,
     pub jumlah_barang: i32,
     pub resi: String,
-    pub updated_at: DateTime<Utc>,
+    pub updated_at: String,
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use uuid::Uuid;
+    use chrono::Utc;
 
     #[test]
     fn test_create_supplier() {
@@ -26,7 +27,7 @@ mod tests {
             jenis_barang: "ayam".to_string(),
             jumlah_barang: 1000,
             resi: "2306206282".to_string(),
-            updated_at: Utc::now(),
+            updated_at: Utc::now().to_rfc3339(),
         };
 
         assert_eq!(supplier.name, "PT. Ayam");
