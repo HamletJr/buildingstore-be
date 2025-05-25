@@ -40,7 +40,7 @@ impl ValidationRule for KategoriNotEmpty {
 
 pub struct StokNonNegatif;
 impl ValidationRule for StokNonNegatif {
-    fn validate(&self, produk: &Produk) -> Result<(), String> {
+    fn validate(&self, _produk: &Produk) -> Result<(), String> {
         // Note: This can't actually fail since stok is u32 which is always non-negative
         // But we'll keep the validation rule for consistency
         Ok(())

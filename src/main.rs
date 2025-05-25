@@ -1,4 +1,5 @@
 #[macro_use] extern crate rocket;
+use rocket_cors::{AllowedOrigins, CorsOptions};
 use rocket_db_pools::Database;
 use rocket_db_pools::sqlx::{self, Row};
 use buildingstore_be::{BuildingStoreDB};
@@ -6,7 +7,6 @@ use dotenvy::dotenv;
 use sqlx::any::install_default_drivers;
 use rocket::State;
 use sqlx::{Any, Pool};
-use rocket_cors::{AllowedOrigins, CorsOptions};
 use autometrics::prometheus_exporter;
 
 pub mod auth;
