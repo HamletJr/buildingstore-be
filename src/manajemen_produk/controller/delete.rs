@@ -2,7 +2,9 @@ use rocket::serde::json::Json;
 use rocket::{delete, routes, Route};
 use crate::manajemen_produk::repository;
 use super::dto::ApiResponse;
+use autometrics::autometrics;
 
+#[autometrics]
 #[delete("/produk/<id>")]
 pub async fn hapus_produk(
     id: i64

@@ -3,7 +3,9 @@ use rocket::{post, routes, Route};
 use crate::manajemen_produk::model::Produk;
 use crate::manajemen_produk::repository;
 use super::dto::{ProdukRequest, ProdukResponse, ApiResponse};
+use autometrics::autometrics;
 
+#[autometrics]
 #[post("/produk", format = "json", data = "<request>")]
 pub async fn tambah_produk(
     request: Json<ProdukRequest>
