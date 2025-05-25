@@ -1,7 +1,7 @@
 use sqlx::any::AnyRow;
 use sqlx::{Any, pool::PoolConnection};
 use sqlx::Row;
-use chrono::NaiveDateTime;
+use chrono::{DateTime, NaiveDateTime, Utc};
 
 use crate::transaksi_penjualan::model::transaksi::Transaksi;
 use crate::transaksi_penjualan::model::detail_transaksi::DetailTransaksi;
@@ -12,8 +12,8 @@ pub struct TransaksiRepository;
 impl TransaksiRepository {
     pub async fn create_transaksi(mut db: PoolConnection<Any>, transaksi: &Transaksi) -> Result<Transaksi, sqlx::Error> {
         let result = sqlx::query("
-                INSERT INTO transaksi (id_pelanggan, nama_pelanggan, tanggal_transaksi, total_harga, status, catatan)
-                VALUES ($1, $2, $3, $4, $5, $6)
+                INSERT INTO transaksi (id_pelanggan, nama_pelanggan, tanggal_transaksi, total_harga, status, catatan, created_at, updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
                 RETURNING id, id_pelanggan, nama_pelanggan, tanggal_transaksi, total_harga, status, catatan
             ")
             .bind(transaksi.id_pelanggan)
@@ -21,7 +21,9 @@ impl TransaksiRepository {
             .bind(transaksi.tanggal_transaksi.to_string())
             .bind(transaksi.total_harga)
             .bind(transaksi.status.to_string())
-            .bind(&transaksi.catatan)
+            .bind(transaksi.catatan.as_ref().map(|s| s.as_str()).unwrap_or(""))
+            .bind(DateTime::from_timestamp(Utc::now().timestamp(), 0).unwrap().to_string())
+            .bind(DateTime::from_timestamp(Utc::now().timestamp(), 0).unwrap().to_string())
             .fetch_one(&mut *db)
             .await?;
         
@@ -47,8 +49,8 @@ impl TransaksiRepository {
         let result = sqlx::query("
                 UPDATE transaksi
                 SET id_pelanggan = $1, nama_pelanggan = $2, tanggal_transaksi = $3, 
-                    total_harga = $4, status = $5, catatan = $6
-                WHERE id = $7
+                    total_harga = $4, status = $5, catatan = $6, updated_at = $7
+                WHERE id = $8
                 RETURNING id, id_pelanggan, nama_pelanggan, tanggal_transaksi, total_harga, status, catatan
             ")
             .bind(transaksi.id_pelanggan)
@@ -56,7 +58,8 @@ impl TransaksiRepository {
             .bind(transaksi.tanggal_transaksi.to_string())
             .bind(transaksi.total_harga)
             .bind(transaksi.status.to_string())
-            .bind(&transaksi.catatan)
+            .bind(transaksi.catatan.as_ref().map(|s| s.as_str()).unwrap_or(""))
+            .bind(DateTime::from_timestamp(Utc::now().timestamp(), 0).unwrap().to_string())
             .bind(transaksi.id)
             .fetch_one(&mut *db)
             .await?;
@@ -134,8 +137,8 @@ impl TransaksiRepository {
 
     pub async fn create_detail_transaksi(mut db: PoolConnection<Any>, detail: &DetailTransaksi) -> Result<DetailTransaksi, sqlx::Error> {
         let result = sqlx::query("
-                INSERT INTO detail_transaksi (id_transaksi, id_produk, harga_satuan, jumlah, subtotal)
-                VALUES ($1, $2, $3, $4, $5)
+                INSERT INTO detail_transaksi (id_transaksi, id_produk, harga_satuan, jumlah, subtotal, created_at, updated_at)
+                VALUES ($1, $2, $3, $4, $5, $6, $7)
                 RETURNING id, id_transaksi, id_produk, harga_satuan, jumlah, subtotal
             ")
             .bind(detail.id_transaksi)
@@ -143,6 +146,8 @@ impl TransaksiRepository {
             .bind(detail.harga_satuan)
             .bind(detail.jumlah as i32)
             .bind(detail.subtotal)
+            .bind(DateTime::from_timestamp(Utc::now().timestamp(), 0).unwrap().to_string())
+            .bind(DateTime::from_timestamp(Utc::now().timestamp(), 0).unwrap().to_string())
             .fetch_one(&mut *db)
             .await?;
         
@@ -172,14 +177,15 @@ impl TransaksiRepository {
     pub async fn update_detail_transaksi(mut db: PoolConnection<Any>, detail: &DetailTransaksi) -> Result<DetailTransaksi, sqlx::Error> {
         let result = sqlx::query("
                 UPDATE detail_transaksi
-                SET id_produk = $1, harga_satuan = $2, jumlah = $3, subtotal = $4
-                WHERE id = $5
+                SET id_produk = $1, harga_satuan = $2, jumlah = $3, subtotal = $4, updated_at = $5
+                WHERE id = $6
                 RETURNING id, id_transaksi, id_produk, harga_satuan, jumlah, subtotal
             ")
             .bind(detail.id_produk)
             .bind(detail.harga_satuan)
             .bind(detail.jumlah as i32)
             .bind(detail.subtotal)
+            .bind(DateTime::from_timestamp(Utc::now().timestamp(), 0).unwrap().to_string())
             .bind(detail.id)
             .fetch_one(&mut *db)
             .await?;
@@ -255,39 +261,10 @@ mod test {
             .await
             .unwrap();
         
-        sqlx::query(r#"
-            CREATE TABLE transaksi (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                id_pelanggan INTEGER NOT NULL,
-                nama_pelanggan VARCHAR(255) NOT NULL,
-                tanggal_transaksi DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                total_harga DECIMAL(15,2) NOT NULL DEFAULT 0.00,
-                status VARCHAR(50) NOT NULL DEFAULT 'MASIH_DIPROSES',
-                catatan TEXT,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        "#)
-        .execute(&db)
-        .await
-        .unwrap();
-
-        sqlx::query(r#"
-            CREATE TABLE detail_transaksi (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                id_transaksi INTEGER NOT NULL,
-                id_produk INTEGER NOT NULL,
-                harga_satuan DECIMAL(15,2) NOT NULL,
-                jumlah INTEGER NOT NULL,
-                subtotal DECIMAL(15,2) NOT NULL,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (id_transaksi) REFERENCES transaksi(id) ON DELETE CASCADE
-            )
-        "#)
-        .execute(&db)
-        .await
-        .unwrap();
+        sqlx::migrate!("./migrations/test")
+            .run(&db)
+            .await
+            .unwrap();
         
         db
     }
