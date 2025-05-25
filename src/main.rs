@@ -79,5 +79,6 @@ async fn rocket() -> _ {
         .attach(manajemen_pembayaran::controller::route_stage())
         .attach(transaksi_penjualan::controller::route_stage())
         .attach(manajemen_supplier::controller::route_stage())
+        .attach(manajemen_produk::controller::route_stage())
         .mount("/", routes![index, test_db])
 }
