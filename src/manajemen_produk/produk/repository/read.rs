@@ -1,47 +1,99 @@
-use super::helper::{lock_store, RepositoryError};
 use crate::manajemen_produk::produk::model::Produk;
+use crate::manajemen_produk::produk::repository::helper::{get_db_pool, row_to_produk, RepositoryError};
 
 pub async fn ambil_semua_produk() -> Result<Vec<Produk>, RepositoryError> {
-    let store = lock_store()?;
-    Ok(store.values().cloned().collect())
+    let pool = get_db_pool()?;
+    
+    let rows = sqlx::query("SELECT * FROM products ORDER BY id")
+        .fetch_all(pool)
+        .await?;
+    
+    let mut products = Vec::new();
+    for row in rows {
+        products.push(row_to_produk(&row)?);
+    }
+    
+    Ok(products)
 }
 
 pub async fn ambil_produk_by_id(id: i64) -> Result<Option<Produk>, RepositoryError> {
-    let store = lock_store()?;
-    Ok(store.get(&id).cloned())
+    let pool = get_db_pool()?;
+    
+    let row = sqlx::query("SELECT * FROM products WHERE id = ?")
+        .bind(id)
+        .fetch_optional(pool)
+        .await?;
+    
+    match row {
+        Some(row) => Ok(Some(row_to_produk(&row)?)),
+        None => Ok(None),
+    }
 }
 
 pub async fn filter_produk_by_kategori(kategori: &str) -> Result<Vec<Produk>, RepositoryError> {
-    let store = lock_store()?;
-    Ok(store.values()
-        .filter(|p| p.kategori == kategori)
-        .cloned()
-        .collect())
+    let pool = get_db_pool()?;
+    
+    let rows = sqlx::query("SELECT * FROM products WHERE kategori = ? ORDER BY id")
+        .bind(kategori)
+        .fetch_all(pool)
+        .await?;
+    
+    let mut products = Vec::new();
+    for row in rows {
+        products.push(row_to_produk(&row)?);
+    }
+    
+    Ok(products)
 }
 
 pub async fn filter_produk_by_price_range(min_price: f64, max_price: f64) -> Result<Vec<Produk>, RepositoryError> {
-    let store = lock_store()?;
-    Ok(store.values()
-        .filter(|p| p.harga >= min_price && p.harga <= max_price)
-        .cloned()
-        .collect())
+    let pool = get_db_pool()?;
+    
+    let rows = sqlx::query("SELECT * FROM products WHERE harga >= ? AND harga <= ? ORDER BY id")
+        .bind(min_price)
+        .bind(max_price)
+        .fetch_all(pool)
+        .await?;
+    
+    let mut products = Vec::new();
+    for row in rows {
+        products.push(row_to_produk(&row)?);
+    }
+    
+    Ok(products)
 }
 
 pub async fn filter_produk_by_stock_availability(min_stock: u32) -> Result<Vec<Produk>, RepositoryError> {
-    let store = lock_store()?;
-    Ok(store.values()
-        .filter(|p| p.stok >= min_stock)
-        .cloned()
-        .collect())
+    let pool = get_db_pool()?;
+    
+    let rows = sqlx::query("SELECT * FROM products WHERE stok >= ? ORDER BY id")
+        .bind(min_stock as i64)
+        .fetch_all(pool)
+        .await?;
+    
+    let mut products = Vec::new();
+    for row in rows {
+        products.push(row_to_produk(&row)?);
+    }
+    
+    Ok(products)
 }
 
 pub async fn search_produk_by_name(name_query: &str) -> Result<Vec<Produk>, RepositoryError> {
-    let store = lock_store()?;
-    let query_lower = name_query.to_lowercase();
-    Ok(store.values()
-        .filter(|p| p.nama.to_lowercase().contains(&query_lower))
-        .cloned()
-        .collect())
+    let pool = get_db_pool()?;
+    let search_pattern = format!("%{}%", name_query);
+    
+    let rows = sqlx::query("SELECT * FROM products WHERE nama LIKE ? ORDER BY id")
+        .bind(search_pattern)
+        .fetch_all(pool)
+        .await?;
+    
+    let mut products = Vec::new();
+    for row in rows {
+        products.push(row_to_produk(&row)?);
+    }
+    
+    Ok(products)
 }
 
 #[cfg(test)]
