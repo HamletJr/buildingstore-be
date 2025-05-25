@@ -1,4 +1,3 @@
-use chrono::{DateTime, Utc};
 use super::supplier::Supplier;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -9,7 +8,7 @@ pub struct SupplierTransaction {
     pub jenis_barang: String,
     pub jumlah_barang: i32,
     pub pengiriman_info: String,
-    pub tanggal_transaksi: DateTime<Utc>,
+    pub tanggal_transaksi: String,
 }
 
 impl SupplierTransaction {
@@ -21,7 +20,7 @@ impl SupplierTransaction {
             jenis_barang: supplier.jenis_barang.clone(),
             jumlah_barang: supplier.jumlah_barang,
             pengiriman_info: supplier.resi.clone(),
-            tanggal_transaksi: supplier.updated_at,
+            tanggal_transaksi: supplier.updated_at.clone(),
         }
     }
 }
@@ -41,7 +40,7 @@ mod tests {
             jenis_barang: "Ayam".to_string(),
             jumlah_barang: 100,
             resi: "2306206282".to_string(),
-            updated_at: now,
+            updated_at: now.to_rfc3339(),
         };
 
         let transaksi = SupplierTransaction::from_supplier("STRX-001".to_string(), &supplier);
@@ -51,6 +50,6 @@ mod tests {
         assert_eq!(transaksi.jenis_barang, "Ayam");
         assert_eq!(transaksi.jumlah_barang, 100);
         assert_eq!(transaksi.pengiriman_info, "2306206282");
-        assert_eq!(transaksi.tanggal_transaksi, now);
+        assert_eq!(transaksi.tanggal_transaksi, now.to_rfc3339());
     }
 }
