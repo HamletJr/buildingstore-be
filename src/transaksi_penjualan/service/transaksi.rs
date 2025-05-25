@@ -6,7 +6,8 @@ use crate::transaksi_penjualan::enums::status_transaksi::StatusTransaksi;
 
 pub struct TransaksiService;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(crate = "rocket::serde")]
 pub struct TransaksiSearchParams {
     pub sort: Option<String>,
     pub filter: Option<String>,
@@ -17,7 +18,7 @@ pub struct TransaksiSearchParams {
     pub limit: Option<usize>,
 }
 
-#[derive(Debug, serde::Serialize)]
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
 #[serde(crate = "rocket::serde")]
 pub struct TransaksiSearchResult {
     pub data: Vec<Transaksi>,
@@ -133,11 +134,11 @@ impl TransaksiService {
         for detail in detail_requests {
             let price = match detail.id_produk {
                 1 => 100000.0,  
-                2 => 250000.0, 
-                3 => 500000.0,   
-                4 => 75000.0,
-                5 => 150000.0, 
-                _ => 50000.0,    
+                2 => 250000.0,   
+                3 => 500000.0, 
+                4 => 75000.0,  
+                5 => 150000.0,  
+                _ => 50000.0,  
             };
             prices.insert(detail.id_produk, price);
         }
@@ -290,6 +291,7 @@ impl TransaksiService {
         Ok(())
     }
 
+    // STRATEGY PATTERN: Method untuk search transaksi dengan pagination
     pub async fn search_transaksi_with_pagination(
         db: Pool<Any>,
         search_params: &TransaksiSearchParams
@@ -403,10 +405,41 @@ mod tests {
             .connect("sqlite::memory:")
             .await
             .unwrap();
-        sqlx::migrate!("migrations/test")
-            .run(&db)
-            .await
-            .unwrap();
+        
+        sqlx::query(r#"
+            CREATE TABLE transaksi (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id_pelanggan INTEGER NOT NULL,
+                nama_pelanggan VARCHAR(255) NOT NULL,
+                tanggal_transaksi DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                total_harga DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+                status VARCHAR(50) NOT NULL DEFAULT 'MASIH_DIPROSES',
+                catatan TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        "#)
+        .execute(&db)
+        .await
+        .unwrap();
+
+        sqlx::query(r#"
+            CREATE TABLE detail_transaksi (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id_transaksi INTEGER NOT NULL,
+                id_produk INTEGER NOT NULL,
+                harga_satuan DECIMAL(15,2) NOT NULL,
+                jumlah INTEGER NOT NULL,
+                subtotal DECIMAL(15,2) NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (id_transaksi) REFERENCES transaksi(id) ON DELETE CASCADE
+            )
+        "#)
+        .execute(&db)
+        .await
+        .unwrap();
+        
         db
     }
 
