@@ -399,9 +399,17 @@ mod tests {
 
     async fn setup() -> Pool<Any> {
         install_default_drivers();
+        
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let db_name = format!("sqlite::memory:service_test_{}", timestamp);
+        
         let db = AnyPoolOptions::new()
             .max_connections(1)
-            .connect("sqlite::memory:")
+            .connect(&db_name)
             .await
             .unwrap();
         
@@ -527,6 +535,7 @@ mod tests {
         let details = TransaksiService::get_detail_by_transaksi_id(db.clone(), created_transaksi.id).await.unwrap();
         assert_eq!(details.len(), 1);
 
+        // Update detail
         let mut updated_detail = created_detail.clone();
         updated_detail.update_jumlah(3);
         let result = TransaksiService::update_detail_transaksi(db.clone(), &updated_detail).await.unwrap();

@@ -474,9 +474,17 @@ mod tests {
 
     async fn setup() -> Rocket<rocket::Build> {
         install_default_drivers();
+        
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let db_name = format!("sqlite::memory:controller_test_{}", timestamp);
+        
         let db = sqlx::any::AnyPoolOptions::new()
             .max_connections(1)
-            .connect("sqlite::memory:")
+            .connect(&db_name)
             .await
             .unwrap();
         
@@ -711,9 +719,9 @@ mod tests {
 
         let invalid_request = crate::transaksi_penjualan::dto::transaksi_request::CreateTransaksiRequest {
             id_pelanggan: 1,
-            nama_pelanggan: "".to_string(),
+            nama_pelanggan: "".to_string(), 
             catatan: None,
-            detail_transaksi: vec![],
+            detail_transaksi: vec![],       
         };
 
         let response = client.post(uri!(super::create_transaksi))

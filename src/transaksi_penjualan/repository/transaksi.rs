@@ -252,9 +252,17 @@ mod test {
 
     async fn setup() -> Pool<Any> {
         install_default_drivers();
+        
+        use std::time::{SystemTime, UNIX_EPOCH};
+        let timestamp = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let db_name = format!("sqlite::memory:repo_test_{}", timestamp);
+        
         let db = AnyPoolOptions::new()
             .max_connections(1)
-            .connect("sqlite::memory:")
+            .connect(&db_name)
             .await
             .unwrap();
         
