@@ -1,5 +1,3 @@
-// transaksi/repository/transaksi.rs
-
 use sqlx::any::AnyRow;
 use sqlx::{Any, pool::PoolConnection};
 use sqlx::Row;
@@ -212,15 +210,21 @@ impl TransaksiRepository {
         let status_str: String = row.get("status");
         let status = StatusTransaksi::from_string(&status_str).unwrap_or(StatusTransaksi::MasihDiproses);
 
-        Transaksi {
-            id: row.get("id"),
-            id_pelanggan: row.get("id_pelanggan"),
-            nama_pelanggan: row.get("nama_pelanggan"),
-            tanggal_transaksi: NaiveDateTime::parse_from_str(&row.get::<String, _>("tanggal_transaksi"), "%Y-%m-%d %H:%M:%S%.f").unwrap(),
-            total_harga: row.get("total_harga"),
-            status,
-            catatan: row.get("catatan"),
-        }
+        let mut transaksi = Transaksi::new(
+            row.get("id_pelanggan"),
+            row.get("nama_pelanggan"),
+            row.get("total_harga"),
+            row.get("catatan"),
+        );
+
+        transaksi.id = row.get("id");
+        transaksi.tanggal_transaksi = NaiveDateTime::parse_from_str(
+            &row.get::<String, _>("tanggal_transaksi"), 
+            "%Y-%m-%d %H:%M:%S%.f"
+        ).unwrap();
+        transaksi.status = status;
+
+        transaksi
     }
 
     fn parse_row_to_detail_transaksi(row: AnyRow) -> DetailTransaksi {
@@ -250,10 +254,41 @@ mod test {
             .connect("sqlite::memory:")
             .await
             .unwrap();
-        sqlx::migrate!("migrations/test")
-            .run(&db)
-            .await
-            .unwrap();
+        
+        sqlx::query(r#"
+            CREATE TABLE transaksi (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id_pelanggan INTEGER NOT NULL,
+                nama_pelanggan VARCHAR(255) NOT NULL,
+                tanggal_transaksi DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                total_harga DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+                status VARCHAR(50) NOT NULL DEFAULT 'MASIH_DIPROSES',
+                catatan TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        "#)
+        .execute(&db)
+        .await
+        .unwrap();
+
+        sqlx::query(r#"
+            CREATE TABLE detail_transaksi (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id_transaksi INTEGER NOT NULL,
+                id_produk INTEGER NOT NULL,
+                harga_satuan DECIMAL(15,2) NOT NULL,
+                jumlah INTEGER NOT NULL,
+                subtotal DECIMAL(15,2) NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (id_transaksi) REFERENCES transaksi(id) ON DELETE CASCADE
+            )
+        "#)
+        .execute(&db)
+        .await
+        .unwrap();
+        
         db
     }
 
@@ -317,5 +352,181 @@ mod test {
         assert_eq!(created_detail.id_transaksi, created_transaksi.id);
         assert_eq!(created_detail.id_produk, 101);
         assert_eq!(created_detail.subtotal, 15000000.0);
+    }
+
+    #[async_test]
+    async fn test_get_all_transaksi() {
+        let db = setup().await;
+
+        let transaksi1 = Transaksi::new(1, "Alice".to_string(), 100000.0, None);
+        let transaksi2 = Transaksi::new(2, "Bob".to_string(), 200000.0, None);
+
+        TransaksiRepository::create_transaksi(db.acquire().await.unwrap(), &transaksi1).await.unwrap();
+        TransaksiRepository::create_transaksi(db.acquire().await.unwrap(), &transaksi2).await.unwrap();
+
+        let all_transaksi = TransaksiRepository::get_all_transaksi(db.acquire().await.unwrap()).await.unwrap();
+        
+        assert_eq!(all_transaksi.len(), 2);
+        assert!(all_transaksi.iter().any(|t| t.nama_pelanggan == "Alice"));
+        assert!(all_transaksi.iter().any(|t| t.nama_pelanggan == "Bob"));
+    }
+
+    #[async_test]
+    async fn test_get_transaksi_by_status() {
+        let db = setup().await;
+
+        let mut transaksi = Transaksi::new(1, "Test User".to_string(), 100000.0, None);
+        let created = TransaksiRepository::create_transaksi(db.acquire().await.unwrap(), &transaksi).await.unwrap();
+        
+        transaksi.id = created.id;
+        transaksi.update_status(StatusTransaksi::Selesai);
+        TransaksiRepository::update_transaksi(db.acquire().await.unwrap(), &transaksi).await.unwrap();
+
+        let completed_transaksi = TransaksiRepository::get_transaksi_by_status(
+            db.acquire().await.unwrap(), 
+            &StatusTransaksi::Selesai
+        ).await.unwrap();
+        
+        assert_eq!(completed_transaksi.len(), 1);
+        assert_eq!(completed_transaksi[0].status, StatusTransaksi::Selesai);
+    }
+
+    #[async_test]
+    async fn test_update_transaksi() {
+        let db = setup().await;
+
+        let transaksi = Transaksi::new(1, "Original Name".to_string(), 100000.0, None);
+        let created = TransaksiRepository::create_transaksi(db.acquire().await.unwrap(), &transaksi).await.unwrap();
+
+        let mut updated_transaksi = created.clone();
+        updated_transaksi.total_harga = 200000.0;
+        
+        let result = TransaksiRepository::update_transaksi(db.acquire().await.unwrap(), &updated_transaksi).await.unwrap();
+        
+        assert_eq!(result.total_harga, 200000.0);
+        assert_eq!(result.id, created.id);
+    }
+
+    #[async_test]
+    async fn test_delete_transaksi() {
+        let db = setup().await;
+
+        let transaksi = Transaksi::new(1, "To Delete".to_string(), 100000.0, None);
+        let created = TransaksiRepository::create_transaksi(db.acquire().await.unwrap(), &transaksi).await.unwrap();
+
+        TransaksiRepository::delete_transaksi(db.acquire().await.unwrap(), created.id).await.unwrap();
+
+        let result = TransaksiRepository::get_transaksi_by_id(db.acquire().await.unwrap(), created.id).await;
+        assert!(result.is_err());
+    }
+
+    #[async_test]
+    async fn test_detail_transaksi_operations() {
+        let db = setup().await;
+
+        let transaksi = Transaksi::new(1, "Detail Test".to_string(), 0.0, None);
+        let created_transaksi = TransaksiRepository::create_transaksi(db.acquire().await.unwrap(), &transaksi).await.unwrap();
+
+        let detail1 = DetailTransaksi::new(created_transaksi.id, 1, 100000.0, 2);
+        let detail2 = DetailTransaksi::new(created_transaksi.id, 2, 50000.0, 3);
+
+        let created_detail1 = TransaksiRepository::create_detail_transaksi(db.acquire().await.unwrap(), &detail1).await.unwrap();
+        let created_detail2 = TransaksiRepository::create_detail_transaksi(db.acquire().await.unwrap(), &detail2).await.unwrap();
+
+        let details = TransaksiRepository::get_detail_by_transaksi_id(db.acquire().await.unwrap(), created_transaksi.id).await.unwrap();
+        assert_eq!(details.len(), 2);
+
+        let mut updated_detail1 = created_detail1.clone();
+        updated_detail1.jumlah = 5;
+        updated_detail1.subtotal = 500000.0;
+        
+        let result = TransaksiRepository::update_detail_transaksi(db.acquire().await.unwrap(), &updated_detail1).await.unwrap();
+        assert_eq!(result.jumlah, 5);
+        assert_eq!(result.subtotal, 500000.0);
+
+        TransaksiRepository::delete_detail_transaksi(db.acquire().await.unwrap(), created_detail2.id).await.unwrap();
+        
+        let remaining_details = TransaksiRepository::get_detail_by_transaksi_id(db.acquire().await.unwrap(), created_transaksi.id).await.unwrap();
+        assert_eq!(remaining_details.len(), 1);
+        assert_eq!(remaining_details[0].id, created_detail1.id);
+    }
+
+    #[async_test]
+    async fn test_state_pattern_integration() {
+        let db = setup().await;
+
+        let transaksi = Transaksi::new(
+            1,
+            "State Test".to_string(),
+            100000.0,
+            None,
+        );
+
+        assert!(transaksi.can_be_modified());
+        assert!(transaksi.can_be_completed());
+
+        let created_transaksi = TransaksiRepository::create_transaksi(db.acquire().await.unwrap(), &transaksi).await.unwrap();
+        
+        let mut fetched_transaksi = TransaksiRepository::get_transaksi_by_id(db.acquire().await.unwrap(), created_transaksi.id).await.unwrap();
+        assert!(fetched_transaksi.can_be_modified());
+        
+        fetched_transaksi.complete().unwrap();
+        assert!(!fetched_transaksi.can_be_modified());
+        
+        let updated_transaksi = TransaksiRepository::update_transaksi(db.acquire().await.unwrap(), &fetched_transaksi).await.unwrap();
+        assert_eq!(updated_transaksi.status, StatusTransaksi::Selesai);
+    }
+
+    #[async_test]
+    async fn test_get_transaksi_by_pelanggan() {
+        let db = setup().await;
+
+        let transaksi1 = Transaksi::new(1, "Customer 1".to_string(), 100000.0, None);
+        let transaksi2 = Transaksi::new(1, "Customer 1 Again".to_string(), 200000.0, None);
+        let transaksi3 = Transaksi::new(2, "Customer 2".to_string(), 150000.0, None);
+
+        TransaksiRepository::create_transaksi(db.acquire().await.unwrap(), &transaksi1).await.unwrap();
+        TransaksiRepository::create_transaksi(db.acquire().await.unwrap(), &transaksi2).await.unwrap();
+        TransaksiRepository::create_transaksi(db.acquire().await.unwrap(), &transaksi3).await.unwrap();
+
+        let customer1_transaksi = TransaksiRepository::get_transaksi_by_pelanggan(
+            db.acquire().await.unwrap(), 
+            1
+        ).await.unwrap();
+        
+        assert_eq!(customer1_transaksi.len(), 2);
+        assert!(customer1_transaksi.iter().all(|t| t.id_pelanggan == 1));
+
+        let customer2_transaksi = TransaksiRepository::get_transaksi_by_pelanggan(
+            db.acquire().await.unwrap(), 
+            2
+        ).await.unwrap();
+        
+        assert_eq!(customer2_transaksi.len(), 1);
+        assert_eq!(customer2_transaksi[0].id_pelanggan, 2);
+    }
+
+    #[async_test]
+    async fn test_delete_detail_by_transaksi_id() {
+        let db = setup().await;
+
+        let transaksi = Transaksi::new(1, "Batch Delete Test".to_string(), 0.0, None);
+        let created_transaksi = TransaksiRepository::create_transaksi(db.acquire().await.unwrap(), &transaksi).await.unwrap();
+
+        let detail1 = DetailTransaksi::new(created_transaksi.id, 1, 100000.0, 2);
+        let detail2 = DetailTransaksi::new(created_transaksi.id, 2, 50000.0, 3);
+        let detail3 = DetailTransaksi::new(created_transaksi.id, 3, 75000.0, 1);
+
+        TransaksiRepository::create_detail_transaksi(db.acquire().await.unwrap(), &detail1).await.unwrap();
+        TransaksiRepository::create_detail_transaksi(db.acquire().await.unwrap(), &detail2).await.unwrap();
+        TransaksiRepository::create_detail_transaksi(db.acquire().await.unwrap(), &detail3).await.unwrap();
+
+        let details_before = TransaksiRepository::get_detail_by_transaksi_id(db.acquire().await.unwrap(), created_transaksi.id).await.unwrap();
+        assert_eq!(details_before.len(), 3);
+
+        TransaksiRepository::delete_detail_by_transaksi_id(db.acquire().await.unwrap(), created_transaksi.id).await.unwrap();
+
+        let details_after = TransaksiRepository::get_detail_by_transaksi_id(db.acquire().await.unwrap(), created_transaksi.id).await.unwrap();
+        assert_eq!(details_after.len(), 0);
     }
 }

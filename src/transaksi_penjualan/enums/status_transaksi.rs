@@ -1,5 +1,3 @@
-// transaksi/enums/status_transaksi.rs
-
 use serde::{Serialize, Deserialize};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
