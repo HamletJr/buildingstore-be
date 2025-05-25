@@ -1,17 +1,35 @@
-use crate::manajemen_produk::produk::repository::helper::{lock_store_mut, lock_counter, RepositoryError};
+use crate::manajemen_produk::produk::repository::helper::{get_db_pool, RepositoryError};
 
 pub async fn hapus_produk(id: i64) -> Result<bool, RepositoryError> {
-    let mut store = lock_store_mut()?;
-    Ok(store.remove(&id).is_some())
+    let pool = get_db_pool()?;
+    
+    let result = sqlx::query("DELETE FROM products WHERE id = ?")
+        .bind(id)
+        .execute(pool)
+        .await?;
+    
+    Ok(result.rows_affected() > 0)
 }
 
 pub async fn clear_all() -> Result<(), RepositoryError> {
-    let mut store = lock_store_mut()?;
-    store.clear();
-
-    let mut counter = lock_counter()?;
-    *counter = 0;
-
+    let pool = get_db_pool()?;
+    
+    // Start transaction
+    let mut tx = pool.begin().await?;
+    
+    // Clear all products
+    sqlx::query("DELETE FROM products")
+        .execute(&mut *tx)
+        .await?;
+    
+    // Reset auto-increment counter
+    sqlx::query("DELETE FROM sqlite_sequence WHERE name = 'products'")
+        .execute(&mut *tx)
+        .await?;
+    
+    // Commit transaction
+    tx.commit().await?;
+    
     Ok(())
 }
 
