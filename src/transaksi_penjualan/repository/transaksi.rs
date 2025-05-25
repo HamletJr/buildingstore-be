@@ -17,7 +17,7 @@ impl TransaksiRepository {
             ")
             .bind(transaksi.id_pelanggan)
             .bind(&transaksi.nama_pelanggan)
-            .bind(&transaksi.tanggal_transaksi) 
+            .bind(&transaksi.tanggal_transaksi)
             .bind(transaksi.total_harga)
             .bind(transaksi.status.to_string())
             .bind(&transaksi.catatan)
@@ -52,7 +52,7 @@ impl TransaksiRepository {
             ")
             .bind(transaksi.id_pelanggan)
             .bind(&transaksi.nama_pelanggan)
-            .bind(&transaksi.tanggal_transaksi)  
+            .bind(&transaksi.tanggal_transaksi)
             .bind(transaksi.total_harga)
             .bind(transaksi.status.to_string())
             .bind(&transaksi.catatan)
@@ -251,39 +251,10 @@ mod test {
             .await
             .unwrap();
         
-        sqlx::query(r#"
-            CREATE TABLE transaksi (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                id_pelanggan INTEGER NOT NULL,
-                nama_pelanggan TEXT NOT NULL,
-                tanggal_transaksi TEXT NOT NULL DEFAULT (datetime('now')),
-                total_harga REAL NOT NULL DEFAULT 0.0,
-                status TEXT NOT NULL DEFAULT 'MASIH_DIPROSES',
-                catatan TEXT,
-                created_at TEXT DEFAULT (datetime('now')),
-                updated_at TEXT DEFAULT (datetime('now'))
-            )
-        "#)
-        .execute(&db)
-        .await
-        .unwrap();
-
-        sqlx::query(r#"
-            CREATE TABLE detail_transaksi (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                id_transaksi INTEGER NOT NULL,
-                id_produk INTEGER NOT NULL,
-                harga_satuan REAL NOT NULL,
-                jumlah INTEGER NOT NULL,
-                subtotal REAL NOT NULL,
-                created_at TEXT DEFAULT (datetime('now')),
-                updated_at TEXT DEFAULT (datetime('now')),
-                FOREIGN KEY (id_transaksi) REFERENCES transaksi(id) ON DELETE CASCADE
-            )
-        "#)
-        .execute(&db)
-        .await
-        .unwrap();
+        sqlx::migrate!("./migrations/test")
+            .run(&db)
+            .await
+            .unwrap();
         
         db
     }
@@ -380,7 +351,6 @@ mod test {
 
         let created = TransaksiRepository::create_transaksi(db.acquire().await.unwrap(), &transaksi).await.unwrap();
         
-        // Verify that the data types work correctly
         assert!(created.id > 0);
         assert_eq!(created.id_pelanggan, 99);
         assert_eq!(created.total_harga, 999.99);

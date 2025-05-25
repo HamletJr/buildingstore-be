@@ -3,10 +3,12 @@ use rocket::State;
 use rocket::http::Status;
 use rocket::serde::json::Json;
 use sqlx::{Any, Pool};
+use autometrics::autometrics;
+
+use crate::auth::guards::auth::AuthenticatedUser;
 use crate::transaksi_penjualan::model::transaksi::Transaksi;
 use crate::transaksi_penjualan::model::detail_transaksi::DetailTransaksi;
 use crate::transaksi_penjualan::service::transaksi::TransaksiService;
-use autometrics::autometrics;
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(crate = "rocket::serde")]
@@ -47,12 +49,13 @@ impl ErrorResponse {
 #[autometrics]
 #[get("/transaksi?<sort>&<filter>&<keyword>&<status>&<id_pelanggan>&<page>&<limit>")]
 pub async fn get_all_transaksi(
+    _user: AuthenticatedUser,
     db: &State<Pool<Any>>, 
     sort: Option<String>, 
     filter: Option<String>, 
     keyword: Option<String>,
     status: Option<String>,
-    id_pelanggan: Option<i32>,
+    id_pelanggan: Option<i32>,  
     page: Option<usize>,
     limit: Option<usize>
 ) -> Result<Json<ApiResponse<crate::transaksi_penjualan::service::transaksi::TransaksiSearchResult>>, (Status, Json<ErrorResponse>)> {
@@ -78,6 +81,7 @@ pub async fn get_all_transaksi(
 #[autometrics]
 #[post("/transaksi", data = "<request>")]
 pub async fn create_transaksi(
+    _user: AuthenticatedUser,
     db: &State<Pool<Any>>, 
     request: Json<crate::transaksi_penjualan::dto::transaksi_request::CreateTransaksiRequest>
 ) -> Result<Json<ApiResponse<Transaksi>>, (Status, Json<ErrorResponse>)> {
@@ -111,8 +115,9 @@ pub async fn create_transaksi(
 #[autometrics]
 #[get("/transaksi/<id>")]
 pub async fn get_transaksi_by_id(
+    _user: AuthenticatedUser,
     db: &State<Pool<Any>>, 
-    id: i32    
+    id: i32 
 ) -> Result<Json<ApiResponse<Transaksi>>, (Status, Json<ErrorResponse>)> {
     match TransaksiService::get_transaksi_by_id(db.inner().clone(), id).await {
         Ok(transaksi) => Ok(Json(ApiResponse::success("Data transaksi berhasil diambil", transaksi))),
@@ -126,6 +131,7 @@ pub async fn get_transaksi_by_id(
 #[autometrics]
 #[patch("/transaksi/<id>", data = "<transaksi>")]
 pub async fn update_transaksi(
+    _user: AuthenticatedUser,
     db: &State<Pool<Any>>, 
     id: i32,
     transaksi: Json<Transaksi>
@@ -173,6 +179,7 @@ pub async fn update_transaksi(
 #[autometrics]
 #[delete("/transaksi/<id>")]
 pub async fn delete_transaksi(
+    _user: AuthenticatedUser,
     db: &State<Pool<Any>>, 
     id: i32
 ) -> Result<Json<ApiResponse<String>>, (Status, Json<ErrorResponse>)> {
@@ -212,6 +219,7 @@ pub async fn delete_transaksi(
 #[autometrics]
 #[put("/transaksi/<id>/complete")]
 pub async fn complete_transaksi(
+    _user: AuthenticatedUser,
     db: &State<Pool<Any>>, 
     id: i32
 ) -> Result<Json<ApiResponse<Transaksi>>, (Status, Json<ErrorResponse>)> {
@@ -231,6 +239,7 @@ pub async fn complete_transaksi(
 #[autometrics]
 #[put("/transaksi/<id>/cancel")]
 pub async fn cancel_transaksi(
+    _user: AuthenticatedUser,
     db: &State<Pool<Any>>, 
     id: i32
 ) -> Result<Json<ApiResponse<Transaksi>>, (Status, Json<ErrorResponse>)> {
@@ -250,6 +259,7 @@ pub async fn cancel_transaksi(
 #[autometrics]
 #[get("/transaksi/<id_transaksi>/detail")]
 pub async fn get_detail_transaksi(
+    _user: AuthenticatedUser,
     db: &State<Pool<Any>>, 
     id_transaksi: i32
 ) -> Result<Json<ApiResponse<Vec<DetailTransaksi>>>, (Status, Json<ErrorResponse>)> {
@@ -265,6 +275,7 @@ pub async fn get_detail_transaksi(
 #[autometrics]
 #[post("/transaksi/<id_transaksi>/detail", data = "<detail>")]
 pub async fn add_detail_transaksi(
+    _user: AuthenticatedUser,
     db: &State<Pool<Any>>, 
     id_transaksi: i32,
     detail: Json<DetailTransaksi>
@@ -312,6 +323,7 @@ pub async fn add_detail_transaksi(
 #[autometrics]
 #[patch("/transaksi/<id_transaksi>/detail/<id_detail>", data = "<detail>")]
 pub async fn update_detail_transaksi(
+    _user: AuthenticatedUser,
     db: &State<Pool<Any>>, 
     id_transaksi: i32,
     id_detail: i32,
@@ -360,9 +372,10 @@ pub async fn update_detail_transaksi(
 #[autometrics]
 #[delete("/transaksi/<id_transaksi>/detail/<id_detail>")]
 pub async fn delete_detail_transaksi(
+    _user: AuthenticatedUser,
     db: &State<Pool<Any>>, 
     id_transaksi: i32,
-    id_detail: i32 
+    id_detail: i32
 ) -> Result<Json<ApiResponse<String>>, (Status, Json<ErrorResponse>)> {
     match TransaksiService::get_transaksi_by_id(db.inner().clone(), id_transaksi).await {
         Ok(transaksi) => {
@@ -400,6 +413,7 @@ pub async fn delete_detail_transaksi(
 #[autometrics]
 #[get("/transaksi/<id>/full")]
 pub async fn get_transaksi_with_details(
+    _user: AuthenticatedUser,
     db: &State<Pool<Any>>, 
     id: i32
 ) -> Result<Json<ApiResponse<crate::transaksi_penjualan::dto::transaksi_request::TransaksiWithDetailsResponse>>, (Status, Json<ErrorResponse>)> {
@@ -422,7 +436,7 @@ pub async fn get_transaksi_with_details(
         id: transaksi.id,
         id_pelanggan: transaksi.id_pelanggan,
         nama_pelanggan: transaksi.nama_pelanggan,
-        tanggal_transaksi: transaksi.tanggal_transaksi,  // Already a String
+        tanggal_transaksi: transaksi.tanggal_transaksi,
         total_harga: transaksi.total_harga,
         status: transaksi.status.to_string(),
         catatan: transaksi.catatan,
@@ -466,39 +480,10 @@ mod tests {
             .await
             .unwrap();
         
-        sqlx::query(r#"
-            CREATE TABLE transaksi (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                id_pelanggan INTEGER NOT NULL,
-                nama_pelanggan TEXT NOT NULL,
-                tanggal_transaksi TEXT NOT NULL DEFAULT (datetime('now')),
-                total_harga REAL NOT NULL DEFAULT 0.0,
-                status TEXT NOT NULL DEFAULT 'MASIH_DIPROSES',
-                catatan TEXT,
-                created_at TEXT DEFAULT (datetime('now')),
-                updated_at TEXT DEFAULT (datetime('now'))
-            )
-        "#)
-        .execute(&db)
-        .await
-        .unwrap();
-
-        sqlx::query(r#"
-            CREATE TABLE detail_transaksi (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                id_transaksi INTEGER NOT NULL,
-                id_produk INTEGER NOT NULL,
-                harga_satuan REAL NOT NULL,
-                jumlah INTEGER NOT NULL,
-                subtotal REAL NOT NULL,
-                created_at TEXT DEFAULT (datetime('now')),
-                updated_at TEXT DEFAULT (datetime('now')),
-                FOREIGN KEY (id_transaksi) REFERENCES transaksi(id) ON DELETE CASCADE
-            )
-        "#)
-        .execute(&db)
-        .await
-        .unwrap();
+        sqlx::migrate!("./migrations/test")
+            .run(&db)
+            .await
+            .unwrap();
 
         rocket::build()
             .manage(db.clone())
@@ -566,7 +551,7 @@ mod tests {
                 id_produk: 1,
                 nama_produk: "Valid Product".to_string(),
                 harga_satuan: 100000.0,
-                jumlah: 50, 
+                jumlah: 50,
             },
         ];
 
@@ -700,7 +685,7 @@ mod tests {
         
         if let Some(details) = get_details_body.data {
             assert_eq!(details.len(), 1);
-
+            
             let mut detail_to_update = details[0].clone();
             detail_to_update.update_jumlah(3);
 

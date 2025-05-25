@@ -13,7 +13,7 @@ pub struct TransaksiSearchParams {
     pub filter: Option<String>,
     pub keyword: Option<String>,
     pub status: Option<String>,
-    pub id_pelanggan: Option<i32>, 
+    pub id_pelanggan: Option<i32>,
     pub page: Option<usize>,
     pub limit: Option<usize>,
 }
@@ -405,39 +405,10 @@ mod tests {
             .await
             .unwrap();
         
-        sqlx::query(r#"
-            CREATE TABLE transaksi (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                id_pelanggan INTEGER NOT NULL,
-                nama_pelanggan TEXT NOT NULL,
-                tanggal_transaksi TEXT NOT NULL DEFAULT (datetime('now')),
-                total_harga REAL NOT NULL DEFAULT 0.0,
-                status TEXT NOT NULL DEFAULT 'MASIH_DIPROSES',
-                catatan TEXT,
-                created_at TEXT DEFAULT (datetime('now')),
-                updated_at TEXT DEFAULT (datetime('now'))
-            )
-        "#)
-        .execute(&db)
-        .await
-        .unwrap();
-
-        sqlx::query(r#"
-            CREATE TABLE detail_transaksi (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                id_transaksi INTEGER NOT NULL,
-                id_produk INTEGER NOT NULL,
-                harga_satuan REAL NOT NULL,
-                jumlah INTEGER NOT NULL,
-                subtotal REAL NOT NULL,
-                created_at TEXT DEFAULT (datetime('now')),
-                updated_at TEXT DEFAULT (datetime('now')),
-                FOREIGN KEY (id_transaksi) REFERENCES transaksi(id) ON DELETE CASCADE
-            )
-        "#)
-        .execute(&db)
-        .await
-        .unwrap();
+        sqlx::migrate!("./migrations/test")
+            .run(&db)
+            .await
+            .unwrap();
         
         db
     }
