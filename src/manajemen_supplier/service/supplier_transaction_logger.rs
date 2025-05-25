@@ -1,93 +1,127 @@
 use std::sync::Arc;
 use async_trait::async_trait;
+use sqlx::{Any, Pool};
 
 use crate::manajemen_supplier::model::supplier::Supplier;
 use crate::manajemen_supplier::patterns::factory::SupplierTransactionFactory;
-use crate::manajemen_supplier::service::supplier_observer::SupplierObserver;
-use crate::manajemen_supplier::repository::supplier_transaction_repository::SupplierTransactionRepository;
+use crate::manajemen_supplier::{repository::supplier_transaction_repository::SupplierTransactionRepository, service::supplier_observer::SupplierObserver};
 
 #[derive(Clone)]
 pub struct SupplierTransactionLogger {
     trx_repo: Arc<dyn SupplierTransactionRepository + Send + Sync>,
+    db_pool: Pool<Any>,
 }
 
 impl SupplierTransactionLogger {
-    pub fn new(trx_repo: Arc<dyn SupplierTransactionRepository + Send + Sync>) -> Self {
-        Self { trx_repo }
+    pub fn new(
+        trx_repo: Arc<dyn SupplierTransactionRepository + Send + Sync>,
+        db_pool: Pool<Any>,
+    ) -> Self {
+        Self { trx_repo, db_pool }
     }
 }
 
 #[async_trait]
 impl SupplierObserver for SupplierTransactionLogger {
     async fn on_supplier_saved(&self, supplier: &Supplier) {
-        let trx = SupplierTransactionFactory::create_from_supplier(supplier);
-        if let Err(err) = self.trx_repo.save(trx).await {
-            eprintln!("Failed to log transaction: {}", err);
+        let transaction_to_save = SupplierTransactionFactory::create_from_supplier(supplier);
+        
+        match self.db_pool.acquire().await {
+            Ok(conn) => {
+                if let Err(err) = self.trx_repo.save(transaction_to_save, conn).await {
+                    // TODO: Replace with a robust logging framework (e.g., tracing::error! or log::error!)
+                    eprintln!("[ERROR] Failed to log supplier transaction for supplier ID {}: {}", supplier.id, err);
+                } else {
+                    // TODO: Replace with a robust logging framework (e.g., tracing::info! or log::info!)
+                    println!("[INFO] Successfully logged transaction for supplier ID {}", supplier.id);
+                }
+            }
+            Err(err) => {
+                // TODO: Replace with a robust logging framework
+                eprintln!("[ERROR] Failed to acquire DB connection for logging transaction for supplier ID {}: {}", supplier.id, err);
+            }
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::sync::{Arc, Mutex};
+    use super::*;
     use chrono::Utc;
-    use async_trait::async_trait;
+    use mockall::predicate::*;
+    use sqlx::any::AnyPoolOptions;
+    use std::sync::Arc;
 
     use crate::manajemen_supplier::model::supplier::Supplier;
     use crate::manajemen_supplier::model::supplier_transaction::SupplierTransaction;
-    use crate::manajemen_supplier::repository::supplier_transaction_repository::SupplierTransactionRepository;
-    use crate::manajemen_supplier::service::supplier_observer::SupplierObserver;
-    use super::SupplierTransactionLogger;
+    use crate::manajemen_supplier::repository::supplier_transaction_repository::{
+        MockSupplierTransactionRepository,
+    };
 
-    struct MockSupplierTransactionRepository {
-        saved_transaction: Arc<Mutex<Option<SupplierTransaction>>>,
+    async fn create_dummy_pool_for_logger_tests() -> Pool<Any> {
+        sqlx::any::install_default_drivers();
+        AnyPoolOptions::new()
+            .max_connections(1)
+            .connect("sqlite::memory:")
+            .await
+            .expect("Failed to create dummy pool for logger tests")
     }
 
-    #[async_trait]
-    impl SupplierTransactionRepository for MockSupplierTransactionRepository {
-        async fn save(&self, trx: SupplierTransaction) -> Result<SupplierTransaction, String> {
-            *self.saved_transaction.lock().unwrap() = Some(trx.clone());
-            Ok(trx)
-        }
-
-        async fn find_by_id(&self, _id: &str) -> Option<SupplierTransaction> {
-            None
-        }
-
-        async fn find_by_supplier_id(&self, _supplier_id: &str) -> Vec<SupplierTransaction> {
-            vec![]
-        }
-    }
-
-    fn sample_supplier() -> Supplier {
+    fn sample_supplier_for_logger_tests() -> Supplier {
         Supplier {
-            id: "SUP-123".to_string(),
-            name: "PT. Pt".to_string(),
-            jenis_barang: "Ayam".to_string(),
-            jumlah_barang: 10,
-            resi: "RESI123".to_string(),
-            updated_at: Utc::now(),
+            id: "SUP-LOG-TEST-001".to_string(),
+            name: "Logging Test Inc.".to_string(),
+            jenis_barang: "Data".to_string(),
+            jumlah_barang: 42,
+            resi: "LOGRESI001".to_string(),
+            updated_at: Utc::now().to_rfc3339(),
         }
     }
 
     #[tokio::test]
-    async fn test_on_supplier_saved_logs_transaction() {
-        let saved_trx = Arc::new(Mutex::new(None));
-        let mock_repo = Arc::new(MockSupplierTransactionRepository {
-            saved_transaction: Arc::clone(&saved_trx),
-        });
-        let logger = SupplierTransactionLogger::new(mock_repo);
-        let supplier = sample_supplier();
+    async fn test_on_supplier_saved_logs_transaction_successfully() {
+        let mut mock_trx_repo = MockSupplierTransactionRepository::new();
+        let dummy_pool = create_dummy_pool_for_logger_tests().await;
+        let supplier_arg = sample_supplier_for_logger_tests();
+        
+        let expected_supplier_id_in_trx = supplier_arg.id.clone();
+        let expected_supplier_name_in_trx = supplier_arg.name.clone();
 
-        logger.on_supplier_saved(&supplier).await;
+        mock_trx_repo.expect_save()
+            .withf(move |trx: &SupplierTransaction, _conn| {
+                trx.supplier_id == expected_supplier_id_in_trx && 
+                trx.supplier_name == expected_supplier_name_in_trx
+            })
+            .times(1)
+            .returning(|_trx, _conn| {
+                Ok(SupplierTransaction { 
+                    id: "mocked-trx-id-123".to_string(), 
+                    supplier_id: "SUP-LOG-TEST-001".to_string(),
+                    supplier_name: "Logging Test Inc.".to_string(), 
+                    jenis_barang: "Data".to_string(),
+                    jumlah_barang: 42,
+                    pengiriman_info: "LOGRESI001".to_string(),
+                    tanggal_transaksi: Utc::now().to_rfc3339()
+                })
+            });
 
-        let logged_trx = saved_trx.lock().unwrap();
-        let logged_trx = logged_trx.as_ref().expect("Transaction was not logged");
-
-        assert_eq!(logged_trx.supplier_id, "SUP-123");
-        assert_eq!(logged_trx.supplier_name, "PT. Pt");
-        assert_eq!(logged_trx.jenis_barang, "Ayam");
-        assert_eq!(logged_trx.jumlah_barang, 10);
-        assert_eq!(logged_trx.pengiriman_info, "RESI123");
+        let logger = SupplierTransactionLogger::new(Arc::new(mock_trx_repo), dummy_pool);
+        logger.on_supplier_saved(&supplier_arg).await;
     }
+
+    #[tokio::test]
+    async fn test_on_supplier_saved_handles_repository_save_error() {
+        let mut mock_trx_repo = MockSupplierTransactionRepository::new();
+        let dummy_pool = create_dummy_pool_for_logger_tests().await;
+        let supplier_arg = sample_supplier_for_logger_tests();
+
+        mock_trx_repo.expect_save()
+            .with(always(), always())
+            .times(1)
+            .returning(|_trx, _conn| Err(sqlx::Error::Protocol("Simulated DB save error".to_string())));
+
+        let logger = SupplierTransactionLogger::new(Arc::new(mock_trx_repo), dummy_pool);
+        logger.on_supplier_saved(&supplier_arg).await;
+    }
+
 }
