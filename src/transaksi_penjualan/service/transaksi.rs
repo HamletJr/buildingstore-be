@@ -406,39 +406,10 @@ mod tests {
             .await
             .unwrap();
         
-        sqlx::query(r#"
-            CREATE TABLE transaksi (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                id_pelanggan INTEGER NOT NULL,
-                nama_pelanggan VARCHAR(255) NOT NULL,
-                tanggal_transaksi DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                total_harga DECIMAL(15,2) NOT NULL DEFAULT 0.00,
-                status VARCHAR(50) NOT NULL DEFAULT 'MASIH_DIPROSES',
-                catatan TEXT,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )
-        "#)
-        .execute(&db)
-        .await
-        .unwrap();
-
-        sqlx::query(r#"
-            CREATE TABLE detail_transaksi (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                id_transaksi INTEGER NOT NULL,
-                id_produk INTEGER NOT NULL,
-                harga_satuan DECIMAL(15,2) NOT NULL,
-                jumlah INTEGER NOT NULL,
-                subtotal DECIMAL(15,2) NOT NULL,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (id_transaksi) REFERENCES transaksi(id) ON DELETE CASCADE
-            )
-        "#)
-        .execute(&db)
-        .await
-        .unwrap();
+        sqlx::migrate!("./migrations/test")
+            .run(&db)
+            .await
+            .unwrap();
         
         db
     }
