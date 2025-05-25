@@ -56,51 +56,8 @@ pub async fn tambah_produk(
     }
 }
 
-#[post("/produk/batch", format = "json", data = "<requests>")]
-pub async fn tambah_batch_produk(
-    requests: Json<Vec<ProdukRequest>>
-) -> Json<ApiResponse<Vec<ProdukResponse>>> {
-    let produk_list: Vec<Produk> = requests.iter()
-        .map(|req| {
-            let stok = if req.stok < 0 { 0 } else { req.stok as u32 };
-            Produk::new(
-                req.nama.clone(),
-                req.kategori.clone(),
-                req.harga,
-                stok,
-                req.deskripsi.clone(),
-            )
-        })
-        .collect();
-
-    match repository::create::tambah_batch_produk(&produk_list).await {
-        Ok(ids) => {
-            // Ambil semua produk yang baru dibuat
-            let mut response_list = Vec::new();
-            for id in ids {
-                if let Ok(Some(produk)) = repository::read::ambil_produk_by_id(id).await {
-                    response_list.push(ProdukResponse::from(produk));
-                }
-            }
-
-            Json(ApiResponse {
-                success: true,
-                message: Some(format!("Berhasil menambahkan {} produk", response_list.len())),
-                data: Some(response_list),
-            })
-        },
-        Err(e) => {
-            Json(ApiResponse {
-                success: false,
-                message: Some(format!("Gagal menambahkan batch produk: {}", e)),
-                data: None,
-            })
-        }
-    }
-}
-
 pub fn routes() -> Vec<Route> {
-    routes![tambah_produk, tambah_batch_produk]
+    routes![tambah_produk]
 }
 
 #[cfg(test)]
@@ -110,7 +67,7 @@ mod tests {
     use rocket::serde::json::json;
     use serde_json;
     use crate::manajemen_produk::produk::controller::{ApiResponse, ProdukResponse};
-    use crate::manajemen_produk::produk::repository::helper::init_database;
+    use crate::manajemen_produk::produk::repository::dto::init_database;
 
     async fn setup_test_client() -> Client {
         let _ = init_database().await;
@@ -149,44 +106,6 @@ mod tests {
         let produk = json.data.unwrap();
         assert_eq!(produk.nama, "Test Laptop");
         assert_eq!(produk.stok, 5);
-        
-        clean_test_data().await;
-    }
-
-    #[tokio::test]
-    async fn test_tambah_batch_produk() {
-        let client = setup_test_client().await;
-        clean_test_data().await;
-        
-        let response = client.post("/api/produk/batch")
-            .header(ContentType::JSON)
-            .body(json!([
-                {
-                    "nama": "Laptop 1",
-                    "kategori": "Elektronik",
-                    "harga": 10_000_000.0,
-                    "stok": 5,
-                    "deskripsi": "Laptop description 1"
-                },
-                {
-                    "nama": "Laptop 2",
-                    "kategori": "Elektronik",
-                    "harga": 12_000_000.0,
-                    "stok": 3,
-                    "deskripsi": "Laptop description 2"
-                }
-            ]).to_string())
-            .dispatch()
-            .await;
-        
-        assert_eq!(response.status(), Status::Ok);
-        
-        let body = response.into_string().await.unwrap();
-        let json: ApiResponse<Vec<ProdukResponse>> = serde_json::from_str(&body).unwrap();
-        
-        assert!(json.success);
-        let products = json.data.unwrap();
-        assert_eq!(products.len(), 2);
         
         clean_test_data().await;
     }

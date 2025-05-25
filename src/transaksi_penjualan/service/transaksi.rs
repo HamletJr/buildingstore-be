@@ -1,5 +1,3 @@
-// transaksi/service/transaksi.rs
-
 use sqlx::{Any, Pool};
 use crate::transaksi_penjualan::model::transaksi::Transaksi;
 use crate::transaksi_penjualan::model::detail_transaksi::DetailTransaksi;
@@ -8,11 +6,46 @@ use crate::transaksi_penjualan::enums::status_transaksi::StatusTransaksi;
 
 pub struct TransaksiService;
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(crate = "rocket::serde")]
+pub struct TransaksiSearchParams {
+    pub sort: Option<String>,
+    pub filter: Option<String>,
+    pub keyword: Option<String>,
+    pub status: Option<String>,
+    pub id_pelanggan: Option<i32>,
+    pub page: Option<usize>,
+    pub limit: Option<usize>,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[serde(crate = "rocket::serde")]
+pub struct TransaksiSearchResult {
+    pub data: Vec<Transaksi>,
+    pub total_count: usize,
+    pub page: usize,
+    pub limit: usize,
+    pub total_pages: usize,
+}
+
+impl TransaksiSearchResult {
+    pub fn empty() -> Self {
+        Self {
+            data: vec![],
+            total_count: 0,
+            page: 1,
+            limit: 10,
+            total_pages: 0,
+        }
+    }
+}
+
 impl TransaksiService {
     pub async fn create_transaksi(db: Pool<Any>, transaksi: &Transaksi) -> Result<Transaksi, sqlx::Error> {
         let db_connection = db.acquire().await?;
         TransaksiRepository::create_transaksi(db_connection, transaksi).await
     }
+
     pub async fn create_transaksi_with_details(
         db: Pool<Any>, 
         request: &crate::transaksi_penjualan::dto::transaksi_request::CreateTransaksiRequest
@@ -21,8 +54,11 @@ impl TransaksiService {
             return Err(sqlx::Error::RowNotFound);
         }
 
+        if let Err(_err_msg) = Self::validate_product_stock(&request.detail_transaksi).await {
+            return Err(sqlx::Error::RowNotFound);
+        }
+
         let product_prices = Self::fetch_product_prices(&request.detail_transaksi).await?;
-        
         let total_harga = request.calculate_total(&product_prices);
 
         let transaksi = Transaksi::new(
@@ -41,54 +77,73 @@ impl TransaksiService {
             
             let db_connection = db.acquire().await?;
             TransaksiRepository::create_detail_transaksi(db_connection, &detail).await?;
+            
+            Self::reduce_product_stock(detail_request.id_produk, detail_request.jumlah).await?;
         }
 
         Ok(created_transaksi)
     }
 
-    async fn fetch_product_prices(
-        detail_requests: &[crate::transaksi_penjualan::dto::transaksi_request::CreateDetailTransaksiRequest]
-    ) -> Result<std::collections::HashMap<i32, f64>, sqlx::Error> {
+    async fn reduce_product_stock(product_id: i32, quantity: u32) -> Result<(), sqlx::Error> {
+        println!("Mengurangi stok produk ID {} sebanyak {}", product_id, quantity);
+        Ok(())
+    }
 
-        let mut prices = std::collections::HashMap::new();
-        
-        for detail in detail_requests {
-            prices.insert(detail.id_produk, match detail.id_produk {
-                1 => 100000.0, 
-                2 => 250000.0, 
-                3 => 500000.0,
-                _ => 50000.0,
-            });
-        }
-
-        Ok(prices)
+    async fn restore_product_stock(product_id: i32, quantity: u32) -> Result<(), sqlx::Error> {
+        println!("Mengembalikan stok produk ID {} sebanyak {}", product_id, quantity);
+        Ok(())
     }
 
     pub async fn validate_product_stock(
         detail_requests: &[crate::transaksi_penjualan::dto::transaksi_request::CreateDetailTransaksiRequest]
     ) -> Result<(), String> {
-
         for detail in detail_requests {
-            let available_stock = match detail.id_produk {
-                1 => 100,
-                2 => 50,
-                3 => 25,
-                _ => 0,
-            };
+            let available_stock = Self::get_product_stock(detail.id_produk).await;
 
             if available_stock == 0 {
-                return Err(format!("Produk dengan ID {} tidak ditemukan", detail.id_produk));
+                return Err(format!("Produk dengan ID {} tidak ditemukan atau stok habis", detail.id_produk));
             }
 
             if detail.jumlah > available_stock {
                 return Err(format!(
-                    "Stok produk ID {} tidak mencukupi. Tersedia: {}, Diminta: {}", 
-                    detail.id_produk, available_stock, detail.jumlah
+                    "Stok produk '{}' tidak mencukupi. Tersedia: {}, Diminta: {}", 
+                    detail.nama_produk, available_stock, detail.jumlah
                 ));
             }
         }
 
         Ok(())
+    }
+
+    async fn get_product_stock(product_id: i32) -> u32 {
+        match product_id {
+            1 => 100,
+            2 => 50,
+            3 => 25,
+            4 => 15,
+            5 => 30,
+            _ => 0,
+        }
+    }
+
+    async fn fetch_product_prices(
+        detail_requests: &[crate::transaksi_penjualan::dto::transaksi_request::CreateDetailTransaksiRequest]
+    ) -> Result<std::collections::HashMap<i32, f64>, sqlx::Error> {
+        let mut prices = std::collections::HashMap::new();
+        
+        for detail in detail_requests {
+            let price = match detail.id_produk {
+                1 => 100000.0,  
+                2 => 250000.0,   
+                3 => 500000.0, 
+                4 => 75000.0,  
+                5 => 150000.0,  
+                _ => 50000.0,  
+            };
+            prices.insert(detail.id_produk, price);
+        }
+
+        Ok(prices)
     }
 
     pub async fn get_transaksi_by_id(db: Pool<Any>, id: i32) -> Result<Transaksi, sqlx::Error> {
@@ -98,6 +153,7 @@ impl TransaksiService {
 
     pub async fn update_transaksi(db: Pool<Any>, transaksi: &Transaksi) -> Result<Transaksi, sqlx::Error> {
         let existing_transaksi = Self::get_transaksi_by_id(db.clone(), transaksi.id).await?;
+        
         if !existing_transaksi.can_be_modified() {
             return Err(sqlx::Error::RowNotFound);
         }
@@ -108,8 +164,14 @@ impl TransaksiService {
 
     pub async fn delete_transaksi(db: Pool<Any>, id: i32) -> Result<(), sqlx::Error> {
         let existing_transaksi = Self::get_transaksi_by_id(db.clone(), id).await?;
-        if !existing_transaksi.status.can_be_cancelled() {
+        
+        if !existing_transaksi.can_be_cancelled() {
             return Err(sqlx::Error::RowNotFound); 
+        }
+
+        let details = Self::get_detail_by_transaksi_id(db.clone(), id).await?;
+        for detail in details {
+            Self::restore_product_stock(detail.id_produk, detail.jumlah).await?;
         }
 
         let db_connection_detail = db.acquire().await?;
@@ -152,12 +214,18 @@ impl TransaksiService {
             return Err(sqlx::Error::RowNotFound);
         }
 
+        let details = Self::get_detail_by_transaksi_id(db.clone(), id).await?;
+        for detail in details {
+            Self::restore_product_stock(detail.id_produk, detail.jumlah).await?;
+        }
+
         transaksi.update_status(StatusTransaksi::Dibatalkan);
         Self::update_transaksi(db, &transaksi).await
     }
 
     pub async fn add_detail_transaksi(db: Pool<Any>, detail: &DetailTransaksi) -> Result<DetailTransaksi, sqlx::Error> {
         let transaksi = Self::get_transaksi_by_id(db.clone(), detail.id_transaksi).await?;
+        
         if !transaksi.can_be_modified() {
             return Err(sqlx::Error::RowNotFound);
         }
@@ -177,6 +245,7 @@ impl TransaksiService {
 
     pub async fn update_detail_transaksi(db: Pool<Any>, detail: &DetailTransaksi) -> Result<DetailTransaksi, sqlx::Error> {
         let transaksi = Self::get_transaksi_by_id(db.clone(), detail.id_transaksi).await?;
+        
         if !transaksi.can_be_modified() {
             return Err(sqlx::Error::RowNotFound);
         }
@@ -191,8 +260,14 @@ impl TransaksiService {
 
     pub async fn delete_detail_transaksi(db: Pool<Any>, id: i32, id_transaksi: i32) -> Result<(), sqlx::Error> {
         let transaksi = Self::get_transaksi_by_id(db.clone(), id_transaksi).await?;
+        
         if !transaksi.can_be_modified() {
             return Err(sqlx::Error::RowNotFound);
+        }
+
+        let details = Self::get_detail_by_transaksi_id(db.clone(), id_transaksi).await?;
+        if let Some(detail_to_delete) = details.iter().find(|d| d.id == id) {
+            Self::restore_product_stock(detail_to_delete.id_produk, detail_to_delete.jumlah).await?;
         }
 
         let db_connection = db.acquire().await?;
@@ -214,6 +289,53 @@ impl TransaksiService {
         TransaksiRepository::update_transaksi(db_connection, &transaksi).await?;
 
         Ok(())
+    }
+
+    // STRATEGY PATTERN: Method untuk search transaksi dengan pagination
+    pub async fn search_transaksi_with_pagination(
+        db: Pool<Any>,
+        search_params: &TransaksiSearchParams
+    ) -> Result<TransaksiSearchResult, sqlx::Error> {
+        let mut transaksi_list = if let Some(customer_id) = search_params.id_pelanggan {
+            Self::get_transaksi_by_pelanggan(db.clone(), customer_id).await?
+        } else if let Some(ref status_str) = search_params.status {
+            if let Some(status_enum) = StatusTransaksi::from_string(status_str) {
+                Self::get_transaksi_by_status(db.clone(), &status_enum).await?
+            } else {
+                return Ok(TransaksiSearchResult::empty());
+            }
+        } else {
+            Self::get_all_transaksi(db).await?
+        };
+
+        if let Some(ref sort_strategy) = search_params.sort {
+            transaksi_list = Self::sort_transaksi(transaksi_list, sort_strategy);
+        }
+
+        if let Some(ref filter_strategy) = search_params.filter {
+            if let Some(ref keyword_value) = search_params.keyword {
+                transaksi_list = Self::filter_transaksi(transaksi_list, filter_strategy, keyword_value);
+            }
+        }
+
+        let total_count = transaksi_list.len();
+        let page = search_params.page.unwrap_or(1);
+        let limit = search_params.limit.unwrap_or(10);
+        let offset = (page - 1) * limit;
+
+        let paginated_list = transaksi_list
+            .into_iter()
+            .skip(offset)
+            .take(limit)
+            .collect();
+
+        Ok(TransaksiSearchResult {
+            data: paginated_list,
+            total_count,
+            page,
+            limit,
+            total_pages: (total_count + limit - 1) / limit,
+        })
     }
 
     pub fn sort_transaksi(mut transaksi_list: Vec<Transaksi>, sort_by: &str) -> Vec<Transaksi> {
@@ -283,10 +405,41 @@ mod tests {
             .connect("sqlite::memory:")
             .await
             .unwrap();
-        sqlx::migrate!("migrations/test")
-            .run(&db)
-            .await
-            .unwrap();
+        
+        sqlx::query(r#"
+            CREATE TABLE transaksi (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id_pelanggan INTEGER NOT NULL,
+                nama_pelanggan VARCHAR(255) NOT NULL,
+                tanggal_transaksi DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                total_harga DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+                status VARCHAR(50) NOT NULL DEFAULT 'MASIH_DIPROSES',
+                catatan TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        "#)
+        .execute(&db)
+        .await
+        .unwrap();
+
+        sqlx::query(r#"
+            CREATE TABLE detail_transaksi (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                id_transaksi INTEGER NOT NULL,
+                id_produk INTEGER NOT NULL,
+                harga_satuan DECIMAL(15,2) NOT NULL,
+                jumlah INTEGER NOT NULL,
+                subtotal DECIMAL(15,2) NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                FOREIGN KEY (id_transaksi) REFERENCES transaksi(id) ON DELETE CASCADE
+            )
+        "#)
+        .execute(&db)
+        .await
+        .unwrap();
+        
         db
     }
 
@@ -309,7 +462,7 @@ mod tests {
     }
 
     #[async_test]
-    async fn test_complete_transaksi() {
+    async fn test_state_pattern_complete_transaksi() {
         let db = setup().await;
 
         let transaksi = Transaksi::new(
@@ -326,7 +479,7 @@ mod tests {
     }
 
     #[async_test]
-    async fn test_sort_transaksi() {
+    async fn test_strategy_pattern_sorting() {
         let transaksi1 = Transaksi::new(1, "Alice".to_string(), 100000.0, None);
         let transaksi2 = Transaksi::new(2, "Bob".to_string(), 200000.0, None);
         let transaksi3 = Transaksi::new(3, "Charlie".to_string(), 150000.0, None);
@@ -345,7 +498,7 @@ mod tests {
     }
 
     #[async_test]
-    async fn test_filter_transaksi() {
+    async fn test_strategy_pattern_filtering() {
         let transaksi1 = Transaksi::new(1, "Alice Smith".to_string(), 100000.0, None);
         let transaksi2 = Transaksi::new(2, "Bob Johnson".to_string(), 200000.0, None);
         let transaksi3 = Transaksi::new(3, "Alice Brown".to_string(), 150000.0, None);

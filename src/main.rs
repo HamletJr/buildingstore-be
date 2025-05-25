@@ -1,17 +1,18 @@
 #[macro_use] extern crate rocket;
+use rocket_cors::{AllowedOrigins, CorsOptions};
 use rocket_db_pools::Database;
 use rocket_db_pools::sqlx::{self, Row};
-use buildingstore_be::BuildingStoreDB;
+use buildingstore_be::{BuildingStoreDB};
 use dotenvy::dotenv;
 use sqlx::any::install_default_drivers;
 use rocket::State;
 use sqlx::{Any, Pool};
-use rocket_cors::{AllowedOrigins, CorsOptions};
 use autometrics::prometheus_exporter;
 
 pub mod auth;
 pub mod manajemen_produk;
 pub mod manajemen_pelanggan;
+pub mod manajemen_pembayaran;
 pub mod transaksi_penjualan;
 
 #[get("/")]
@@ -74,6 +75,7 @@ async fn rocket() -> _ {
         .attach(BuildingStoreDB::init())
         .attach(auth::controller::route_stage())
         .attach(manajemen_pelanggan::controller::route_stage())
+        .attach(manajemen_pembayaran::controller::route_stage())
         .attach(transaksi_penjualan::controller::route_stage())
         .mount("/", routes![index, test_db, metrics])
 }

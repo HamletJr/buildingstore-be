@@ -42,7 +42,7 @@ pub async fn init_database() -> Result<(), RepositoryError> {
     // Create products table
     sqlx::query(
         r#"
-        CREATE TABLE IF NOT EXISTS products (
+        CREATE TABLE IF NOT EXISTS produk (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             nama TEXT NOT NULL,
             kategori TEXT NOT NULL,
@@ -61,10 +61,10 @@ pub async fn init_database() -> Result<(), RepositoryError> {
     sqlx::query(
         r#"
         CREATE TRIGGER IF NOT EXISTS update_products_updated_at
-        AFTER UPDATE ON products
+        AFTER UPDATE ON produk
         FOR EACH ROW
         BEGIN
-            UPDATE products SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+            UPDATE produk SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
         END
         "#
     )
@@ -117,7 +117,7 @@ pub fn row_to_produk(row: &sqlx::sqlite::SqliteRow) -> Result<Produk, sqlx::Erro
 pub async fn get_store_stats() -> Result<(i64, i64), RepositoryError> {
     let pool = get_db_pool()?;
     
-    let row = sqlx::query("SELECT COUNT(*) as count, COALESCE(MAX(id), 0) as max_id FROM products")
+    let row = sqlx::query("SELECT COUNT(*) as count, COALESCE(MAX(id), 0) as max_id FROM produk")
         .fetch_one(pool)
         .await?;
     

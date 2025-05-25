@@ -1,5 +1,5 @@
 use crate::manajemen_produk::produk::model::Produk;
-use crate::manajemen_produk::produk::repository::helper::{get_db_pool, validate_produk, RepositoryError};
+use crate::manajemen_produk::produk::repository::dto::{get_db_pool, validate_produk, RepositoryError};
 
 pub async fn update_produk(id: i64, produk: &Produk) -> Result<bool, RepositoryError> {
     // Validasi input
@@ -9,7 +9,7 @@ pub async fn update_produk(id: i64, produk: &Produk) -> Result<bool, RepositoryE
     
     let result = sqlx::query(
         r#"
-        UPDATE products 
+        UPDATE produk 
         SET nama = ?, kategori = ?, harga = ?, stok = ?, deskripsi = ?
         WHERE id = ?
         "#
@@ -33,7 +33,7 @@ pub async fn update_produk(id: i64, produk: &Produk) -> Result<bool, RepositoryE
 pub async fn update_stok(id: i64, new_stok: u32) -> Result<bool, RepositoryError> {
     let pool = get_db_pool()?;
     
-    let result = sqlx::query("UPDATE products SET stok = ? WHERE id = ?")
+    let result = sqlx::query("UPDATE produk SET stok = ? WHERE id = ?")
         .bind(new_stok as i64)
         .bind(id)
         .execute(pool)
@@ -53,7 +53,7 @@ pub async fn update_harga(id: i64, new_harga: f64) -> Result<bool, RepositoryErr
     
     let pool = get_db_pool()?;
     
-    let result = sqlx::query("UPDATE products SET harga = ? WHERE id = ?")
+    let result = sqlx::query("UPDATE produk SET harga = ? WHERE id = ?")
         .bind(new_harga)
         .bind(id)
         .execute(pool)
@@ -72,6 +72,7 @@ mod tests {
     use crate::manajemen_produk::produk::repository::create::tambah_produk;
     use crate::manajemen_produk::produk::repository::read::ambil_produk_by_id;
     use crate::manajemen_produk::produk::repository::delete::clear_all;
+    use crate::manajemen_produk::produk::repository::dto::init_database;
     use tokio::test;
 
     fn create_test_product() -> Produk {
@@ -85,6 +86,8 @@ mod tests {
     }
 
     async fn cleanup_repository() -> Result<(), RepositoryError> {
+        // Always initialize database first
+        init_database().await?;
         clear_all().await
     }
 

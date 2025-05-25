@@ -59,7 +59,7 @@ mod tests {
     use crate::manajemen_produk::produk::repository;
 
     async fn setup_test_client() -> Client {
-        let _ = repository::helper::init_database().await;
+        let _ = repository::dto::init_database().await;
         let rocket = rocket::build().mount("/api", super::super::routes());
         Client::tracked(rocket).await.expect("valid rocket instance")
     }

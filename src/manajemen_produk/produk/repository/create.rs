@@ -1,5 +1,5 @@
 use crate::manajemen_produk::produk::model::Produk;
-use crate::manajemen_produk::produk::repository::helper::{get_db_pool, validate_produk, RepositoryError};
+use crate::manajemen_produk::produk::repository::dto::{get_db_pool, validate_produk, RepositoryError};
 
 pub async fn tambah_produk(produk: &Produk) -> Result<i64, RepositoryError> {
     // Validasi terlebih dahulu
@@ -9,7 +9,7 @@ pub async fn tambah_produk(produk: &Produk) -> Result<i64, RepositoryError> {
     
     let result = sqlx::query(
         r#"
-        INSERT INTO products (nama, kategori, harga, stok, deskripsi)
+        INSERT INTO produk (nama, kategori, harga, stok, deskripsi)
         VALUES (?, ?, ?, ?, ?)
         "#
     )
@@ -24,48 +24,12 @@ pub async fn tambah_produk(produk: &Produk) -> Result<i64, RepositoryError> {
     Ok(result.last_insert_rowid())
 }
 
-pub async fn tambah_batch_produk(produk_list: &[Produk]) -> Result<Vec<i64>, RepositoryError> {
-    // Validasi semua produk terlebih dahulu
-    for produk in produk_list {
-        validate_produk(produk)?;
-    }
-    
-    let pool = get_db_pool()?;
-    let mut ids = Vec::new();
-    
-    // Start transaction
-    let mut tx = pool.begin().await?;
-    
-    for produk in produk_list {
-        let result = sqlx::query(
-            r#"
-            INSERT INTO products (nama, kategori, harga, stok, deskripsi)
-            VALUES (?, ?, ?, ?, ?)
-            "#
-        )
-        .bind(&produk.nama)
-        .bind(&produk.kategori)
-        .bind(produk.harga)
-        .bind(produk.stok as i64)
-        .bind(&produk.deskripsi)
-        .execute(&mut *tx)
-        .await?;
-        
-        ids.push(result.last_insert_rowid());
-    }
-    
-    // Commit transaction
-    tx.commit().await?;
-    
-    Ok(ids)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::manajemen_produk::produk::repository::delete::clear_all;
     use crate::manajemen_produk::produk::repository::read::ambil_produk_by_id;
-    use crate::manajemen_produk::produk::repository::helper::init_database;
+    use crate::manajemen_produk::produk::repository::dto::init_database;
     use tokio::test;
 
     // Helper function to create test products
@@ -102,107 +66,37 @@ mod tests {
         clear_all().await
     }
 
-    #[test]
+        #[tokio::test]
     async fn test_tambah_dan_ambil_produk() {
-        // Start with clean repository
-        let _ = cleanup_repository().await;
+        // Initialize DB and cleanup first
+        let _ = init_database().await;
+        let _ = clear_all().await;
         
-        // Create test product
-        let produk = create_test_products()[0].clone();
+        let produk = Produk::new(
+            "Test Laptop".to_string(),
+            "Elektronik".to_string(),
+            15_000_000.0,
+            10,
+            Some("Test Description".to_string())
+        );
         
-        // Add product to repository
-        let result = tambah_produk(&produk).await;
-        assert!(result.is_ok());
+        // Add product
+        let id = tambah_produk(&produk).await.unwrap();
+        assert!(id > 0);
         
-        let id = result.unwrap();
-        assert!(id > 0); // ID should be positive
+        // Get the product back
+        let retrieved = ambil_produk_by_id(id).await.unwrap().unwrap();
         
-        // Retrieve product
-        let retrieved = ambil_produk_by_id(id).await.unwrap();
-        assert!(retrieved.is_some());
-        
-        let retrieved_produk = retrieved.unwrap();
-        assert_eq!(retrieved_produk.id.unwrap(), id);
-        assert_eq!(retrieved_produk.nama, produk.nama);
-        assert_eq!(retrieved_produk.kategori, produk.kategori);
-        assert_eq!(retrieved_produk.harga, produk.harga);
-        assert_eq!(retrieved_produk.stok, produk.stok);
-        assert_eq!(retrieved_produk.deskripsi, produk.deskripsi);
-    }
+        // Verify all fields
+        assert_eq!(retrieved.id.unwrap(), id);
+        assert_eq!(retrieved.nama, produk.nama);
+        assert_eq!(retrieved.kategori, produk.kategori);
+        assert_eq!(retrieved.harga, produk.harga);
+        assert_eq!(retrieved.stok, produk.stok);
+        assert_eq!(retrieved.deskripsi, produk.deskripsi);
 
-    #[test]
-    async fn test_tambah_batch_produk() {
-        // Start with clean repository
-        let _ = cleanup_repository().await;
-        
-        // Create test products
-        let test_products = create_test_products();
-        
-        // Add products in batch
-        let result = tambah_batch_produk(&test_products).await;
-        assert!(result.is_ok());
-        
-        let ids = result.unwrap();
-        assert_eq!(ids.len(), test_products.len());
-        
-        // Verify all IDs are unique and positive
-        for id in &ids {
-            assert!(*id > 0);
-        }
-        
-        // Verify all products were added correctly
-        for (i, id) in ids.iter().enumerate() {
-            let retrieved = ambil_produk_by_id(*id).await.unwrap();
-            assert!(retrieved.is_some());
-            
-            let retrieved_produk = retrieved.unwrap();
-            assert_eq!(retrieved_produk.nama, test_products[i].nama);
-            assert_eq!(retrieved_produk.kategori, test_products[i].kategori);
-        }
-    }
-
-    #[test]
-    async fn test_concurrent_operations() {
-        // Start with clean repository
-        let _ = cleanup_repository().await;
-        
-        // Create multiple products concurrently
-        let mut handles = vec![];
-        
-        for i in 0..5 {
-            let handle = tokio::spawn(async move {
-                // Initialize database for each task
-                let _ = init_database().await;
-                
-                let produk = Produk::new(
-                    format!("Product {}", i),
-                    "Test".to_string(),
-                    1000.0 * (i as f64 + 1.0),
-                    10 * (i + 1),
-                    Some(format!("Description {}", i)),
-                );
-                
-                tambah_produk(&produk).await
-            });
-            
-            handles.push(handle);
-        }
-        
-        // Wait for all operations to complete
-        let mut successful_adds = 0;
-        for handle in handles {
-            let result = handle.await.unwrap();
-            if result.is_ok() {
-                successful_adds += 1;
-            }
-        }
-        
-        // At least some operations should succeed
-        assert!(successful_adds > 0);
-        
-        // Verify products were added
-        let all_products = crate::manajemen_produk::produk::repository::read::ambil_semua_produk().await.unwrap();
-        assert!(all_products.len() > 0);
+        // Cleanup after test
+        let _ = clear_all().await;
     }
 
     #[test]

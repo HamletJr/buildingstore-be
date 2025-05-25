@@ -1,5 +1,3 @@
-// transaksi/dto/transaksi_request.rs
-
 use rocket::serde::{Serialize, Deserialize};
 use std::collections::HashMap;
 

@@ -1,9 +1,9 @@
-use crate::manajemen_produk::produk::repository::helper::{get_db_pool, RepositoryError};
+use crate::manajemen_produk::produk::repository::dto::{get_db_pool, RepositoryError};
 
 pub async fn hapus_produk(id: i64) -> Result<bool, RepositoryError> {
     let pool = get_db_pool()?;
     
-    let result = sqlx::query("DELETE FROM products WHERE id = ?")
+    let result = sqlx::query("DELETE FROM produk WHERE id = ?")
         .bind(id)
         .execute(pool)
         .await?;
@@ -18,12 +18,12 @@ pub async fn clear_all() -> Result<(), RepositoryError> {
     let mut tx = pool.begin().await?;
     
     // Clear all products
-    sqlx::query("DELETE FROM products")
+    sqlx::query("DELETE FROM produk")
         .execute(&mut *tx)
         .await?;
     
     // Reset auto-increment counter
-    sqlx::query("DELETE FROM sqlite_sequence WHERE name = 'products'")
+    sqlx::query("DELETE FROM sqlite_sequence WHERE name = 'produk'")
         .execute(&mut *tx)
         .await?;
     
@@ -39,6 +39,7 @@ mod tests {
     use crate::manajemen_produk::produk::model::Produk;
     use crate::manajemen_produk::produk::repository::create::tambah_produk;
     use crate::manajemen_produk::produk::repository::read::{ambil_produk_by_id, ambil_semua_produk};
+    use crate::manajemen_produk::produk::repository::dto::init_database;
     use tokio::test;
 
     fn create_test_product() -> Produk {
@@ -52,6 +53,8 @@ mod tests {
     }
 
     async fn cleanup_repository() -> Result<(), RepositoryError> {
+        // Always initialize database first
+        init_database().await?;
         clear_all().await
     }
 
