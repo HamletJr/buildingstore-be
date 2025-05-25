@@ -17,13 +17,7 @@ impl SupplierRepositoryImpl {
         let jenis_barang: String = row.get("jenis_barang");
         let jumlah_barang: i32 = row.get("jumlah_barang");
         let resi: String = row.get("resi");
-        let updated_at_str: String = row.get("updated_at");
-        let updated_at = DateTime::parse_from_rfc3339(&updated_at_str)
-            .map_err(|e| sqlx::Error::ColumnDecode {
-                index: "updated_at".into(),
-                source: Box::new(e),
-            })?
-            .with_timezone(&Utc);
+        let updated_at: String = row.get("updated_at");
 
         Ok(Supplier {
             id,
@@ -50,7 +44,7 @@ impl SupplierRepository for SupplierRepositoryImpl {
             .bind(&supplier.jenis_barang)
             .bind(supplier.jumlah_barang)
             .bind(&supplier.resi)
-            .bind(supplier.updated_at.to_rfc3339())
+            .bind(&supplier.updated_at)
             .execute(&mut *db)
             .await?;
 
@@ -84,7 +78,7 @@ impl SupplierRepository for SupplierRepositoryImpl {
             .bind(&supplier.jenis_barang)
             .bind(supplier.jumlah_barang)
             .bind(&supplier.resi)
-            .bind(supplier.updated_at.to_rfc3339())
+            .bind(supplier.updated_at)
             .bind(&supplier.id)
             .execute(&mut *db)
             .await?;
@@ -150,7 +144,7 @@ mod tests {
             jenis_barang: "ayam".to_string(),
             jumlah_barang: 1000,
             resi: "2306206282".to_string(),
-            updated_at: Utc::now(),
+            updated_at: Utc::now().to_rfc3339(),
         };
 
         let db_conn = db_pool.acquire().await.unwrap();
@@ -173,7 +167,7 @@ mod tests {
             jenis_barang: "ayam".to_string(),
             jumlah_barang: 1000,
             resi: "2306206282".to_string(),
-            updated_at: Utc::now(),
+            updated_at: Utc::now().to_rfc3339(),
         };
 
         let db_conn = db_pool.acquire().await.unwrap();
@@ -181,6 +175,9 @@ mod tests {
 
         let db_conn = db_pool.acquire().await.unwrap();
         let result = repository.find_by_id(&supplier_id, db_conn).await;
+        if let Err(e) = &result {
+        eprintln!("Test failure - error: {:?}", e);
+}
 
         assert!(result.is_ok());
         let found_supplier = result.unwrap();
@@ -212,7 +209,7 @@ mod tests {
             jenis_barang: "ayam".to_string(),
             jumlah_barang: 1000,
             resi: "2306206282".to_string(),
-            updated_at: Utc::now(),
+            updated_at: Utc::now().to_rfc3339(),
         };
 
         let db_conn = db_pool.acquire().await.unwrap();
@@ -220,7 +217,7 @@ mod tests {
 
         let mut updated_supplier = supplier.clone();
         updated_supplier.jumlah_barang = 1;
-        updated_supplier.updated_at = Utc::now();
+        updated_supplier.updated_at = Utc::now().to_rfc3339();
         let db_conn = db_pool.acquire().await.unwrap();
         let result = repository.update(updated_supplier, db_conn).await;
 
@@ -241,7 +238,7 @@ mod tests {
             jenis_barang: "ayam".to_string(),
             jumlah_barang: 1000,
             resi: "2306206282".to_string(),
-            updated_at: Utc::now(),
+            updated_at: Utc::now().to_rfc3339(),
         };
 
         let db_conn = db_pool.acquire().await.unwrap();

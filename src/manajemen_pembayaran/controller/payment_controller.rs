@@ -526,7 +526,6 @@ mod tests {
 
     use rocket::local::blocking::Client;
     use rocket::http::{Status, ContentType};
-    use rocket::{catchers};
 
     fn setup_rocket() -> rocket::Rocket<rocket::Build> {
         let controller = setup_controller();

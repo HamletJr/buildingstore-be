@@ -42,7 +42,7 @@ impl SupplierService for SupplierServiceImpl {
             jenis_barang,
             jumlah_barang,
             resi,
-            updated_at: Utc::now(), 
+            updated_at: Utc::now().to_rfc3339(), 
         };
         
         let saved_supplier = self.supplier_repo.save(supplier_to_save, conn).await
@@ -69,7 +69,7 @@ impl SupplierService for SupplierServiceImpl {
             jenis_barang,
             jumlah_barang,
             resi,
-            updated_at: Utc::now(), 
+            updated_at: Utc::now().to_rfc3339(), 
         };
         
         self.supplier_repo.update(supplier_to_update, conn).await

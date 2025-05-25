@@ -81,7 +81,7 @@ mod tests {
             jenis_barang: "Elektronik".to_string(),
             jumlah_barang: 100,
             resi: "DISPRESI123".to_string(),
-            updated_at: Utc::now(),
+            updated_at: Utc::now().to_rfc3339(),
         }
     }
 

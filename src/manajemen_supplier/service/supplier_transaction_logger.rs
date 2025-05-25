@@ -74,7 +74,7 @@ mod tests {
             jenis_barang: "Data".to_string(),
             jumlah_barang: 42,
             resi: "LOGRESI001".to_string(),
-            updated_at: Utc::now(),
+            updated_at: Utc::now().to_rfc3339(),
         }
     }
 
@@ -101,7 +101,7 @@ mod tests {
                     jenis_barang: "Data".to_string(),
                     jumlah_barang: 42,
                     pengiriman_info: "LOGRESI001".to_string(),
-                    tanggal_transaksi: Utc::now()
+                    tanggal_transaksi: Utc::now().to_rfc3339()
                 })
             });
 

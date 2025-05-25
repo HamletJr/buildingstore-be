@@ -18,13 +18,7 @@ impl SupplierTransactionRepositoryImpl {
         let jenis_barang: String = row.get("jenis_barang");
         let jumlah_barang: i32 = row.get("jumlah_barang");
         let pengiriman_info: String = row.get("pengiriman_info");
-        let tanggal_transaksi_str: String = row.get("tanggal_transaksi");
-        let tanggal_transaksi = DateTime::parse_from_rfc3339(&tanggal_transaksi_str)
-            .map_err(|e| sqlx::Error::ColumnDecode {
-                index: "tanggal_transaksi".into(),
-                source: Box::new(e),
-            })?
-            .with_timezone(&Utc);
+        let tanggal_transaksi: String = row.get("tanggal_transaksi");
 
         Ok(SupplierTransaction {
             id,
@@ -53,7 +47,7 @@ impl SupplierTransactionRepository for SupplierTransactionRepositoryImpl {
             .bind(&transaction.jenis_barang)
             .bind(transaction.jumlah_barang)
             .bind(&transaction.pengiriman_info)
-            .bind(transaction.tanggal_transaksi.to_rfc3339())
+            .bind(&transaction.tanggal_transaksi)
             .execute(&mut *db)
             .await?;
 
@@ -94,10 +88,11 @@ mod tests {
     use sqlx::{any::{AnyPoolOptions, install_default_drivers}};
     use chrono::Utc;
     use uuid::Uuid;
-    use crate::manajemen_supplier::model::supplier::Supplier;
+    use crate::manajemen_supplier::{model::supplier::Supplier, repository::supplier_repository_impl::SupplierRepositoryImpl};
+    use crate::manajemen_supplier::repository::supplier_repository::SupplierRepository;
     use crate::manajemen_supplier::repository::supplier_transaction_repository::SupplierTransactionRepository;
 
-    async fn setup_repository() -> (SupplierTransactionRepositoryImpl, sqlx::Pool<Any>) {
+    async fn setup_repository() -> (SupplierTransactionRepositoryImpl, SupplierRepositoryImpl, sqlx::Pool<Any>) {
         install_default_drivers();
         let db_pool = AnyPoolOptions::new()
             .max_connections(1)
@@ -105,13 +100,12 @@ mod tests {
             .await
             .expect("Failed to connect to test DB");
 
-        // Run migrations for test (ensure migrations/test folder is available)
         sqlx::migrate!("migrations/test")
             .run(&db_pool)
             .await
             .expect("Failed to run migrations");
 
-        (SupplierTransactionRepositoryImpl::new(), db_pool)
+        (SupplierTransactionRepositoryImpl::new(), SupplierRepositoryImpl::new(), db_pool)
     }
 
     fn create_supplier() -> Supplier {
@@ -121,7 +115,7 @@ mod tests {
             jenis_barang: "ayam".to_string(),
             jumlah_barang: 1000,
             resi: "2306206282".to_string(),
-            updated_at: Utc::now(),
+            updated_at: Utc::now().to_rfc3339(),
         }
     }
 
@@ -133,18 +127,28 @@ mod tests {
             jenis_barang: supplier.jenis_barang.clone(),
             jumlah_barang: supplier.jumlah_barang,
             pengiriman_info: supplier.resi.clone(),
-            tanggal_transaksi: Utc::now(),
+            tanggal_transaksi: Utc::now().to_rfc3339(),
         }
     }
 
     #[tokio::test]
     async fn save_supplier_transaction() {
-        let (repository, db_pool) = setup_repository().await;
+        let (transaction_repo, supplier_repo, db_pool) = setup_repository().await;
         let supplier = create_supplier();
-        let transaksi = create_transaction(&supplier);
-
+        
+        // Save supplier first
         let db_conn = db_pool.acquire().await.unwrap();
-        let result = repository.save(transaksi.clone(), db_conn).await;
+        supplier_repo.save(supplier.clone(), db_conn).await.unwrap();
+        
+        // Now save the transaction
+        let transaksi = create_transaction(&supplier);
+        let db_conn = db_pool.acquire().await.unwrap();
+        let result = transaction_repo.save(transaksi.clone(), db_conn).await;
+        
+        if let Err(e) = &result {
+            eprintln!("Test 'save_supplier_transaction' failed with error: {:?}", e);
+        }
+
         assert!(result.is_ok());
         let saved = result.unwrap();
         assert_eq!(saved.supplier_id, supplier.id);
@@ -153,24 +157,30 @@ mod tests {
 
     #[tokio::test]
     async fn test_find_supplier_transaction_by_id() {
-        let (repository, db_pool) = setup_repository().await;
+        let (transaction_repo, supplier_repo, db_pool) = setup_repository().await;
         let supplier = create_supplier();
         let transaksi = create_transaction(&supplier);
 
+        // Save supplier first
         let db_conn = db_pool.acquire().await.unwrap();
-        repository.save(transaksi.clone(), db_conn).await.unwrap();
+        supplier_repo.save(supplier.clone(), db_conn).await.unwrap();
+
+        // Save transaction
+        let db_conn = db_pool.acquire().await.unwrap();
+        transaction_repo.save(transaksi.clone(), db_conn).await.unwrap();
         
+        // Find transaction by ID
         let db_conn = db_pool.acquire().await.unwrap();
-        let found = repository.find_by_id(&transaksi.id, db_conn).await;
+        let found = transaction_repo.find_by_id(&transaksi.id, db_conn).await;
         assert!(found.is_ok());
         assert_eq!(found.unwrap().id, transaksi.id);
     }
 
     #[tokio::test]
     async fn test_find_nonexistent_transaction() {
-        let (repository, db_pool) = setup_repository().await;
+        let (transaction_repo, _supplier_repo, db_pool) = setup_repository().await;
         let db_conn = db_pool.acquire().await.unwrap();
-        let result = repository.find_by_id("non-existent-id", db_conn).await;
+        let result = transaction_repo.find_by_id("non-existent-id", db_conn).await;
         
         // Should return an error (RowNotFound) when transaction doesn't exist
         assert!(result.is_err());
@@ -182,19 +192,26 @@ mod tests {
 
     #[tokio::test]
     async fn test_find_supplier_transaction_by_supplier_id() {
-        let (repository, db_pool) = setup_repository().await;
+        let (transaction_repo, supplier_repo, db_pool) = setup_repository().await;
         let supplier = create_supplier();
         let transaksi1 = create_transaction(&supplier);
         let transaksi2 = create_transaction(&supplier);
 
+        // Save supplier first
         let db_conn = db_pool.acquire().await.unwrap();
-        repository.save(transaksi1.clone(), db_conn).await.unwrap();
-        
-        let db_conn = db_pool.acquire().await.unwrap();
-        repository.save(transaksi2.clone(), db_conn).await.unwrap();
+        supplier_repo.save(supplier.clone(), db_conn).await.unwrap();
 
+        // Save first transaction
         let db_conn = db_pool.acquire().await.unwrap();
-        let results = repository.find_by_supplier_id(&supplier.id, db_conn).await;
+        transaction_repo.save(transaksi1.clone(), db_conn).await.unwrap();
+        
+        // Save second transaction
+        let db_conn = db_pool.acquire().await.unwrap();
+        transaction_repo.save(transaksi2.clone(), db_conn).await.unwrap();
+
+        // Find transactions by supplier ID
+        let db_conn = db_pool.acquire().await.unwrap();
+        let results = transaction_repo.find_by_supplier_id(&supplier.id, db_conn).await;
         assert!(results.is_ok());
         let transactions = results.unwrap();
         assert_eq!(transactions.len(), 2);
@@ -203,9 +220,9 @@ mod tests {
 
     #[tokio::test]
     async fn test_find_transactions_for_nonexistent_supplier() {
-        let (repository, db_pool) = setup_repository().await;
+        let (transaction_repo, _supplier_repo, db_pool) = setup_repository().await;
         let db_conn = db_pool.acquire().await.unwrap();
-        let results = repository.find_by_supplier_id("non-existent-supplier", db_conn).await;
+        let results = transaction_repo.find_by_supplier_id("non-existent-supplier", db_conn).await;
         
         assert!(results.is_ok());
         let transactions = results.unwrap();
