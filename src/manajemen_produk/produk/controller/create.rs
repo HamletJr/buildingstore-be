@@ -8,11 +8,14 @@ use super::dto::{ProdukRequest, ProdukResponse, ApiResponse};
 pub async fn tambah_produk(
     request: Json<ProdukRequest>
 ) -> Json<ApiResponse<ProdukResponse>> {
+    // Validasi stok tidak boleh negatif
+    let stok = if request.stok < 0 { 0 } else { request.stok as u32 };
+    
     let produk = Produk::new(
         request.nama.clone(),
         request.kategori.clone(),
         request.harga,
-        request.stok.try_into().unwrap_or(0),
+        stok,
         request.deskripsi.clone(),
     );
 
@@ -27,10 +30,17 @@ pub async fn tambah_produk(
                         data: Some(ProdukResponse::from(created_produk)),
                     })
                 },
-                _ => {
+                Ok(None) => {
                     Json(ApiResponse {
                         success: false,
-                        message: Some("Produk berhasil dibuat tetapi gagal mengambil data".to_string()),
+                        message: Some("Produk berhasil dibuat tetapi tidak ditemukan".to_string()),
+                        data: None,
+                    })
+                },
+                Err(e) => {
+                    Json(ApiResponse {
+                        success: false,
+                        message: Some(format!("Produk berhasil dibuat tetapi gagal mengambil data: {}", e)),
                         data: None,
                     })
                 }
@@ -51,13 +61,16 @@ pub async fn tambah_batch_produk(
     requests: Json<Vec<ProdukRequest>>
 ) -> Json<ApiResponse<Vec<ProdukResponse>>> {
     let produk_list: Vec<Produk> = requests.iter()
-        .map(|req| Produk::new(
-            req.nama.clone(),
-            req.kategori.clone(),
-            req.harga,
-            req.stok.try_into().unwrap_or(0),
-            req.deskripsi.clone(),
-        ))
+        .map(|req| {
+            let stok = if req.stok < 0 { 0 } else { req.stok as u32 };
+            Produk::new(
+                req.nama.clone(),
+                req.kategori.clone(),
+                req.harga,
+                stok,
+                req.deskripsi.clone(),
+            )
+        })
         .collect();
 
     match repository::create::tambah_batch_produk(&produk_list).await {
@@ -95,14 +108,22 @@ mod tests {
     use rocket::http::{ContentType, Status};
     use rocket::local::asynchronous::Client;
     use rocket::serde::json::json;
-    use crate::manajemen_produk::produk::controller::{ApiResponse, ProdukResponse, routes};
+    use serde_json;
+    use crate::manajemen_produk::produk::controller::{ApiResponse, ProdukResponse};
+    use crate::manajemen_produk::produk::repository::helper::init_database;
 
     async fn setup_test_client() -> Client {
-        let rocket = rocket::build().mount("/api", routes());
+        // Initialize database before creating client
+        let _ = init_database().await;
+        
+        let rocket = rocket::build()
+            .mount("/api", super::routes());
         Client::tracked(rocket).await.expect("valid rocket instance")
     }
 
     async fn clean_test_data() {
+        // Initialize database if not already done
+        let _ = init_database().await;
         let _ = crate::manajemen_produk::produk::repository::delete::clear_all().await;
     }
 
@@ -186,6 +207,9 @@ mod tests {
     async fn test_tambah_produk_invalid_data() {
         let client = setup_test_client().await;
         
+        // Clean up first
+        clean_test_data().await;
+        
         let response = client.post("/api/produk")
             .header(ContentType::JSON)
             .body(json!({
@@ -205,6 +229,67 @@ mod tests {
         
         assert!(!json.success);
         assert!(json.data.is_none());
+        assert!(json.message.is_some());
+        
+        // Clean up
+        clean_test_data().await;
+    }
+
+    #[tokio::test]
+    async fn test_tambah_produk_negative_stok() {
+        let client = setup_test_client().await;
+        
+        // Clean up first
+        clean_test_data().await;
+        
+        let response = client.post("/api/produk")
+            .header(ContentType::JSON)
+            .body(json!({
+                "nama": "Test Product",
+                "kategori": "Test",
+                "harga": 1000.0,
+                "stok": -5,
+                "deskripsi": "Test product with negative stock"
+            }).to_string())
+            .dispatch()
+            .await;
+        
+        assert_eq!(response.status(), Status::Ok);
+        
+        let body = response.into_string().await.unwrap();
+        let json: ApiResponse<ProdukResponse> = serde_json::from_str(&body).unwrap();
+        
+        // Should succeed but with stok set to 0
+        if json.success {
+            let produk = json.data.unwrap();
+            assert_eq!(produk.stok, 0); // Should be converted to 0
+        }
+        
+        // Clean up
+        clean_test_data().await;
+    }
+
+    #[tokio::test]
+    async fn test_tambah_batch_produk_empty_list() {
+        let client = setup_test_client().await;
+        
+        // Clean up first
+        clean_test_data().await;
+        
+        let response = client.post("/api/produk/batch")
+            .header(ContentType::JSON)
+            .body(json!([]).to_string())
+            .dispatch()
+            .await;
+        
+        assert_eq!(response.status(), Status::Ok);
+        
+        let body = response.into_string().await.unwrap();
+        let json: ApiResponse<Vec<ProdukResponse>> = serde_json::from_str(&body).unwrap();
+        
+        assert!(json.success);
+        let products = json.data.unwrap();
+        assert_eq!(products.len(), 0);
         
         // Clean up
         clean_test_data().await;
