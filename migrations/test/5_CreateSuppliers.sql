@@ -4,7 +4,7 @@ CREATE TABLE suppliers (
     jenis_barang VARCHAR(255),
     jumlah_barang INTEGER NOT NULL DEFAULT 0,
     resi VARCHAR(255),
-    updated_at TEXT
+    updated_at DATETIME NOT NULL
 );
 
 CREATE TABLE supplier_transactions (
@@ -14,6 +14,6 @@ CREATE TABLE supplier_transactions (
     jenis_barang VARCHAR(255),
     jumlah_barang INTEGER NOT NULL,
     pengiriman_info VARCHAR(255),
-    tanggal_transaksi TEXT,
+    tanggal_transaksi TIMESTAMPTZ NOT NULL,
     FOREIGN KEY (supplier_id) REFERENCES suppliers(id) ON DELETE CASCADE
 );

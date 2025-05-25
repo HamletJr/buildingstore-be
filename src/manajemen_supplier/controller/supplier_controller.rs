@@ -5,8 +5,6 @@ use std::sync::Arc;
 
 use crate::manajemen_supplier::model::supplier::Supplier;
 use crate::manajemen_supplier::service::supplier_service::SupplierService;
-use crate::manajemen_supplier::service::supplier_notifier::SupplierNotifier;
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(crate = "rocket::serde")]
 pub struct SupplierRequest {
@@ -33,7 +31,6 @@ pub async fn save_supplier(
     request_data: Json<SupplierRequest>,
     db_pool: &State<Pool<Any>>,
     service: &State<Arc<dyn SupplierService>>, // Injected service
-    notifier: &State<Arc<dyn SupplierNotifier>>, // Injected notifier
 ) -> (Status, Json<ApiResponse<Supplier>>) {
     match service.inner().save_supplier( // Use .inner() to get the Arc, then call method
         db_pool.inner().clone(),
@@ -43,7 +40,6 @@ pub async fn save_supplier(
         request_data.resi.clone(),
     ).await {
         Ok(saved_supplier) => {
-            notifier.inner().notify_supplier_saved(&saved_supplier).await; // Use .inner() for notifier
             (
                 Status::Created,
                 Json(ApiResponse {
