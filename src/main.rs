@@ -40,7 +40,6 @@ pub fn metrics() -> String {
     prometheus_exporter::encode_to_string().unwrap()
 }
 
-
 #[launch]
 async fn rocket() -> _ {
     dotenv().ok();
@@ -67,7 +66,7 @@ async fn rocket() -> _ {
         .run(&db_pool)
         .await
         .expect("Failed to run migrations");    
-  
+
     rocket::build()
         .manage(reqwest::Client::builder().build().unwrap())
         .manage(db_pool)
