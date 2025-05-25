@@ -1,5 +1,6 @@
 use crate::manajemen_produk::model::Produk;
 use crate::manajemen_produk::repository::dto::{get_db_pool, validate_produk, RepositoryError};
+use sqlx::Row;
 
 pub async fn tambah_produk(produk: &Produk) -> Result<i64, RepositoryError> {
     // Validasi terlebih dahulu
@@ -10,18 +11,19 @@ pub async fn tambah_produk(produk: &Produk) -> Result<i64, RepositoryError> {
     let result = sqlx::query(
         r#"
         INSERT INTO produk (nama, kategori, harga, stok, deskripsi)
-        VALUES (?, ?, ?, ?, ?)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING id
         "#
     )
     .bind(&produk.nama)
     .bind(&produk.kategori)
     .bind(produk.harga)
-    .bind(produk.stok as i64)
+    .bind(produk.stok as i32)
     .bind(&produk.deskripsi)
-    .execute(pool)
+    .fetch_one(pool)
     .await?;
     
-    Ok(result.last_insert_rowid())
+    Ok(result.get("id"))
 }
 
 #[cfg(test)]
@@ -30,7 +32,6 @@ mod tests {
     use crate::manajemen_produk::repository::delete::clear_all;
     use crate::manajemen_produk::repository::read::ambil_produk_by_id;
     use crate::manajemen_produk::repository::dto::init_database;
-    use tokio::test;
 
     // Helper function to create test products
     fn create_test_products() -> Vec<Produk> {
@@ -66,7 +67,7 @@ mod tests {
         clear_all().await
     }
 
-        #[tokio::test]
+    #[tokio::test]
     async fn test_tambah_dan_ambil_produk() {
         // Initialize DB and cleanup first
         let _ = init_database().await;
@@ -99,7 +100,7 @@ mod tests {
         let _ = clear_all().await;
     }
 
-    #[test]
+    #[tokio::test]
     async fn test_id_sequence() {
         // Start with clean repository
         let _ = cleanup_repository().await;
@@ -120,13 +121,16 @@ mod tests {
             ids.push(id);
         }
         
-        // Verify IDs are sequential
+        // Verify IDs are sequential starting from 1 (PostgreSQL BIGSERIAL)
         assert_eq!(ids.len(), 3);
+        assert_eq!(ids[0], 1);
+        assert_eq!(ids[1], 2);
+        assert_eq!(ids[2], 3);
         
-        // Delete a product
+        // Delete a product (middle one)
         let _ = crate::manajemen_produk::repository::delete::hapus_produk(ids[1]).await;
         
-        // Add another product
+        // Add another product - PostgreSQL BIGSERIAL continues sequence
         let produk = Produk::new(
             "New Product".to_string(),
             "Test".to_string(),
@@ -137,11 +141,14 @@ mod tests {
         
         let new_id = tambah_produk(&produk).await.unwrap();
         
-        // Verify the new ID is greater than 0
-        assert!(new_id > 0);
+        // In PostgreSQL, sequence continues even after delete
+        assert_eq!(new_id, 4);
+        
+        // Cleanup
+        let _ = clear_all().await;
     }
 
-    #[test]
+    #[tokio::test]
     async fn test_validation_error() {
         // Start with clean repository
         let _ = cleanup_repository().await;
@@ -171,5 +178,49 @@ mod tests {
         let result = tambah_produk(&invalid_price_produk).await;
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), RepositoryError::ValidationError(_)));
+        
+        // Test empty category
+        let invalid_category_produk = Produk::new(
+            "Valid Name".to_string(),
+            "".to_string(),
+            1000.0,
+            10,
+            None,
+        );
+        
+        let result = tambah_produk(&invalid_category_produk).await;
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), RepositoryError::ValidationError(_)));
+        
+        // Cleanup
+        let _ = clear_all().await;
+    }
+
+    #[tokio::test]
+    async fn test_multiple_products_batch() {
+        let _ = cleanup_repository().await;
+        
+        let test_products = create_test_products();
+        let mut inserted_ids = Vec::new();
+        
+        // Insert all test products
+        for product in &test_products {
+            let id = tambah_produk(product).await.unwrap();
+            inserted_ids.push(id);
+        }
+        
+        // Verify all were inserted with correct sequential IDs
+        assert_eq!(inserted_ids.len(), 3);
+        for (index, &id) in inserted_ids.iter().enumerate() {
+            assert_eq!(id, (index + 1) as i64);
+            
+            // Verify each product can be retrieved
+            let retrieved = ambil_produk_by_id(id).await.unwrap().unwrap();
+            assert_eq!(retrieved.nama, test_products[index].nama);
+            assert_eq!(retrieved.kategori, test_products[index].kategori);
+        }
+        
+        // Cleanup
+        let _ = clear_all().await;
     }
 }

@@ -1,11 +1,11 @@
-use sqlx::{Pool, Sqlite, SqlitePool, Row};
+use sqlx::{Pool, Postgres, PgPool, Row};
 use std::sync::OnceLock;
 use std::error::Error as StdError;
 use std::fmt;
 use crate::manajemen_produk::model::Produk;
 
 // Global database connection pool
-static DB_POOL: OnceLock<SqlitePool> = OnceLock::new();
+static DB_POOL: OnceLock<PgPool> = OnceLock::new();
 
 // Error types
 #[derive(Debug)]
@@ -37,35 +37,46 @@ impl From<sqlx::Error> for RepositoryError {
 
 // Database initialization
 pub async fn init_database() -> Result<(), RepositoryError> {
-    let pool = SqlitePool::connect("sqlite::memory:").await?;
+    // Use PostgreSQL connection string - adjust as needed for your setup
+    let database_url = std::env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "postgresql://localhost/test_db".to_string());
     
-    // Create products table
+    let pool = PgPool::connect(&database_url).await?;
+    
+    // Create products table with PostgreSQL syntax
     sqlx::query(
         r#"
         CREATE TABLE IF NOT EXISTS produk (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            nama TEXT NOT NULL,
-            kategori TEXT NOT NULL,
-            harga REAL NOT NULL,
+            id BIGSERIAL PRIMARY KEY,
+            nama VARCHAR NOT NULL,
+            kategori VARCHAR NOT NULL,
+            harga DECIMAL(15,2) NOT NULL,
             stok INTEGER NOT NULL,
             deskripsi TEXT,
-            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         "#
     )
     .execute(&pool)
     .await?;
 
-    // Create trigger for updated_at
+    // Create trigger for updated_at (PostgreSQL syntax)
     sqlx::query(
         r#"
-        CREATE TRIGGER IF NOT EXISTS update_products_updated_at
-        AFTER UPDATE ON produk
-        FOR EACH ROW
+        CREATE OR REPLACE FUNCTION update_updated_at_column()
+        RETURNS TRIGGER AS $$
         BEGIN
-            UPDATE produk SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
-        END
+            NEW.updated_at = CURRENT_TIMESTAMP;
+            RETURN NEW;
+        END;
+        $$ language 'plpgsql';
+        
+        DROP TRIGGER IF EXISTS update_produk_updated_at ON produk;
+        CREATE TRIGGER update_produk_updated_at
+            BEFORE UPDATE ON produk
+            FOR EACH ROW
+            EXECUTE FUNCTION update_updated_at_column();
         "#
     )
     .execute(&pool)
@@ -76,7 +87,7 @@ pub async fn init_database() -> Result<(), RepositoryError> {
 }
 
 // Get database pool
-pub fn get_db_pool() -> Result<&'static SqlitePool, RepositoryError> {
+pub fn get_db_pool() -> Result<&'static PgPool, RepositoryError> {
     DB_POOL.get().ok_or(RepositoryError::Other("Database not initialized".to_string()))
 }
 
@@ -102,13 +113,13 @@ pub fn validate_produk(produk: &Produk) -> Result<(), RepositoryError> {
 }
 
 // Convert database row to Produk
-pub fn row_to_produk(row: &sqlx::sqlite::SqliteRow) -> Result<Produk, sqlx::Error> {
+pub fn row_to_produk(row: &sqlx::postgres::PgRow) -> Result<Produk, sqlx::Error> {
     Ok(Produk::with_id(
         row.try_get("id")?,
         row.try_get("nama")?,
         row.try_get("kategori")?,
         row.try_get("harga")?,
-        row.try_get::<i64, _>("stok")? as u32,
+        row.try_get::<i32, _>("stok")? as u32,
         row.try_get("deskripsi")?,
     ))
 }
