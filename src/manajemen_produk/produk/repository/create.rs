@@ -1,54 +1,61 @@
 use crate::manajemen_produk::produk::model::Produk;
-use crate::manajemen_produk::produk::repository::helper::{get_next_id, lock_store_mut, validate_produk, RepositoryError};
+use crate::manajemen_produk::produk::repository::helper::{get_db_pool, validate_produk, RepositoryError};
 
 pub async fn tambah_produk(produk: &Produk) -> Result<i64, RepositoryError> {
     // Validasi terlebih dahulu
     validate_produk(produk)?;
     
-    // Generate ID baru
-    let id = get_next_id()?;
+    let pool = get_db_pool()?;
     
-    // Lock store dan insert
-    let mut store = lock_store_mut()?;
+    let result = sqlx::query(
+        r#"
+        INSERT INTO products (nama, kategori, harga, stok, deskripsi)
+        VALUES (?, ?, ?, ?, ?)
+        "#
+    )
+    .bind(&produk.nama)
+    .bind(&produk.kategori)
+    .bind(produk.harga)
+    .bind(produk.stok as i64)
+    .bind(&produk.deskripsi)
+    .execute(pool)
+    .await?;
     
-    let new_produk = Produk::with_id(
-        id,
-        produk.nama.clone(),
-        produk.kategori.clone(),
-        produk.harga,
-        produk.stok,
-        produk.deskripsi.clone(),
-    );
-    
-    store.insert(id, new_produk);
-    Ok(id)
+    Ok(result.last_insert_rowid())
 }
 
 pub async fn tambah_batch_produk(produk_list: &[Produk]) -> Result<Vec<i64>, RepositoryError> {
-    let mut ids = Vec::new();
-    
     // Validasi semua produk terlebih dahulu
     for produk in produk_list {
         validate_produk(produk)?;
     }
     
-    let mut store = lock_store_mut()?;
+    let pool = get_db_pool()?;
+    let mut ids = Vec::new();
+    
+    // Start transaction
+    let mut tx = pool.begin().await?;
     
     for produk in produk_list {
-        let id = get_next_id()?;
+        let result = sqlx::query(
+            r#"
+            INSERT INTO products (nama, kategori, harga, stok, deskripsi)
+            VALUES (?, ?, ?, ?, ?)
+            "#
+        )
+        .bind(&produk.nama)
+        .bind(&produk.kategori)
+        .bind(produk.harga)
+        .bind(produk.stok as i64)
+        .bind(&produk.deskripsi)
+        .execute(&mut *tx)
+        .await?;
         
-        let new_produk = Produk::with_id(
-            id,
-            produk.nama.clone(),
-            produk.kategori.clone(),
-            produk.harga,
-            produk.stok,
-            produk.deskripsi.clone(),
-        );
-        
-        store.insert(id, new_produk);
-        ids.push(id);
+        ids.push(result.last_insert_rowid());
     }
+    
+    // Commit transaction
+    tx.commit().await?;
     
     Ok(ids)
 }

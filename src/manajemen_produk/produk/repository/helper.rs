@@ -1,21 +1,17 @@
-use std::sync::{Arc, Mutex, MutexGuard};
-use std::collections::HashMap;
-use lazy_static::lazy_static;
-use crate::manajemen_produk::produk::model::Produk;
+use sqlx::{Pool, Sqlite, SqlitePool, Row};
+use std::sync::OnceLock;
 use std::error::Error as StdError;
 use std::fmt;
+use crate::manajemen_produk::produk::model::Produk;
 
-// Global storage - perbaikan tipe data untuk HashMap
-lazy_static! {
-    pub static ref PRODUCT_STORE: Arc<Mutex<HashMap<i64, Produk>>> = Arc::new(Mutex::new(HashMap::new()));
-    pub static ref ID_COUNTER: Arc<Mutex<i64>> = Arc::new(Mutex::new(0));
-}
+// Global database connection pool
+static DB_POOL: OnceLock<SqlitePool> = OnceLock::new();
 
 // Error types
 #[derive(Debug)]
 pub enum RepositoryError {
     NotFound,
-    LockError,
+    DatabaseError(sqlx::Error),
     ValidationError(String),
     Other(String),
 }
@@ -24,7 +20,7 @@ impl fmt::Display for RepositoryError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
             RepositoryError::NotFound => write!(f, "Record not found"),
-            RepositoryError::LockError => write!(f, "Failed to acquire lock"),
+            RepositoryError::DatabaseError(e) => write!(f, "Database error: {}", e),
             RepositoryError::ValidationError(msg) => write!(f, "Validation error: {}", msg),
             RepositoryError::Other(msg) => write!(f, "{}", msg),
         }
@@ -33,30 +29,55 @@ impl fmt::Display for RepositoryError {
 
 impl StdError for RepositoryError {}
 
-// Helper functions untuk ID management
-pub fn get_next_id() -> Result<i64, RepositoryError> {
-    let mut counter = ID_COUNTER.lock().map_err(|_| RepositoryError::LockError)?;
-    *counter += 1;
-    Ok(*counter)
+impl From<sqlx::Error> for RepositoryError {
+    fn from(error: sqlx::Error) -> Self {
+        RepositoryError::DatabaseError(error)
+    }
 }
 
-pub fn reset_id_counter() -> Result<(), RepositoryError> {
-    let mut counter = ID_COUNTER.lock().map_err(|_| RepositoryError::LockError)?;
-    *counter = 0;
+// Database initialization
+pub async fn init_database() -> Result<(), RepositoryError> {
+    let pool = SqlitePool::connect("sqlite::memory:").await?;
+    
+    // Create products table
+    sqlx::query(
+        r#"
+        CREATE TABLE IF NOT EXISTS products (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            nama TEXT NOT NULL,
+            kategori TEXT NOT NULL,
+            harga REAL NOT NULL,
+            stok INTEGER NOT NULL,
+            deskripsi TEXT,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+        "#
+    )
+    .execute(&pool)
+    .await?;
+
+    // Create trigger for updated_at
+    sqlx::query(
+        r#"
+        CREATE TRIGGER IF NOT EXISTS update_products_updated_at
+        AFTER UPDATE ON products
+        FOR EACH ROW
+        BEGIN
+            UPDATE products SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
+        END
+        "#
+    )
+    .execute(&pool)
+    .await?;
+
+    DB_POOL.set(pool).map_err(|_| RepositoryError::Other("Failed to set database pool".to_string()))?;
     Ok(())
 }
 
-// Consistent lock helpers - diperbaiki untuk HashMap
-pub fn lock_store() -> Result<MutexGuard<'static, HashMap<i64, Produk>>, RepositoryError> {
-    PRODUCT_STORE.lock().map_err(|_| RepositoryError::LockError)
-}
-
-pub fn lock_store_mut() -> Result<MutexGuard<'static, HashMap<i64, Produk>>, RepositoryError> {
-    PRODUCT_STORE.lock().map_err(|_| RepositoryError::LockError)
-}
-
-pub fn lock_counter() -> Result<MutexGuard<'static, i64>, RepositoryError> {
-    ID_COUNTER.lock().map_err(|_| RepositoryError::LockError)
+// Get database pool
+pub fn get_db_pool() -> Result<&'static SqlitePool, RepositoryError> {
+    DB_POOL.get().ok_or(RepositoryError::Other("Database not initialized".to_string()))
 }
 
 // Validation helpers
@@ -80,9 +101,28 @@ pub fn validate_produk(produk: &Produk) -> Result<(), RepositoryError> {
     Ok(())
 }
 
+// Convert database row to Produk
+pub fn row_to_produk(row: &sqlx::sqlite::SqliteRow) -> Result<Produk, sqlx::Error> {
+    Ok(Produk::with_id(
+        row.try_get("id")?,
+        row.try_get("nama")?,
+        row.try_get("kategori")?,
+        row.try_get("harga")?,
+        row.try_get::<i64, _>("stok")? as u32,
+        row.try_get("deskripsi")?,
+    ))
+}
+
 // Statistics helper
-pub fn get_store_stats() -> Result<(usize, i64), RepositoryError> {
-    let store = lock_store()?;
-    let counter = lock_counter()?;
-    Ok((store.len(), *counter))
+pub async fn get_store_stats() -> Result<(i64, i64), RepositoryError> {
+    let pool = get_db_pool()?;
+    
+    let row = sqlx::query("SELECT COUNT(*) as count, COALESCE(MAX(id), 0) as max_id FROM products")
+        .fetch_one(pool)
+        .await?;
+    
+    let count: i64 = row.try_get("count")?;
+    let max_id: i64 = row.try_get("max_id")?;
+    
+    Ok((count, max_id))
 }
