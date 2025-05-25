@@ -1,46 +1,48 @@
 use crate::manajemen_produk::produk::model::Produk;
-use crate::manajemen_produk::produk::repository::helper::{lock_store_mut, validate_produk, RepositoryError};
+use crate::manajemen_produk::produk::repository::helper::{get_db_pool, validate_produk, RepositoryError};
 
 pub async fn update_produk(id: i64, produk: &Produk) -> Result<bool, RepositoryError> {
     // Validasi input
     validate_produk(produk)?;
     
-    let mut store = lock_store_mut()?;
+    let pool = get_db_pool()?;
     
-    if store.contains_key(&id) {
-        let updated_produk = Produk::with_id(
-            id,
-            produk.nama.clone(),
-            produk.kategori.clone(),
-            produk.harga,
-            produk.stok,
-            produk.deskripsi.clone(),
-        );
-        
-        store.insert(id, updated_produk);
-        Ok(true)
-    } else {
+    let result = sqlx::query(
+        r#"
+        UPDATE products 
+        SET nama = ?, kategori = ?, harga = ?, stok = ?, deskripsi = ?
+        WHERE id = ?
+        "#
+    )
+    .bind(&produk.nama)
+    .bind(&produk.kategori)
+    .bind(produk.harga)
+    .bind(produk.stok as i64)
+    .bind(&produk.deskripsi)
+    .bind(id)
+    .execute(pool)
+    .await?;
+    
+    if result.rows_affected() == 0 {
         Err(RepositoryError::NotFound)
+    } else {
+        Ok(true)
     }
 }
 
 pub async fn update_stok(id: i64, new_stok: u32) -> Result<bool, RepositoryError> {
-    let mut store = lock_store_mut()?;
+    let pool = get_db_pool()?;
     
-    if let Some(produk) = store.get(&id).cloned() {
-        let updated_produk = Produk::with_id(
-            id,
-            produk.nama,
-            produk.kategori,
-            produk.harga,
-            new_stok,
-            produk.deskripsi,
-        );
-        
-        store.insert(id, updated_produk);
-        Ok(true)
-    } else {
+    let result = sqlx::query("UPDATE products SET stok = ? WHERE id = ?")
+        .bind(new_stok as i64)
+        .bind(id)
+        .execute(pool)
+        .await?;
+    
+    if result.rows_affected() == 0 {
         Err(RepositoryError::NotFound)
+    } else {
+        Ok(true)
     }
 }
 
@@ -49,22 +51,18 @@ pub async fn update_harga(id: i64, new_harga: f64) -> Result<bool, RepositoryErr
         return Err(RepositoryError::ValidationError("Harga tidak boleh negatif".to_string()));
     }
     
-    let mut store = lock_store_mut()?;
+    let pool = get_db_pool()?;
     
-    if let Some(produk) = store.get(&id).cloned() {
-        let updated_produk = Produk::with_id(
-            id,
-            produk.nama,
-            produk.kategori,
-            new_harga,
-            produk.stok,
-            produk.deskripsi,
-        );
-        
-        store.insert(id, updated_produk);
-        Ok(true)
-    } else {
+    let result = sqlx::query("UPDATE products SET harga = ? WHERE id = ?")
+        .bind(new_harga)
+        .bind(id)
+        .execute(pool)
+        .await?;
+    
+    if result.rows_affected() == 0 {
         Err(RepositoryError::NotFound)
+    } else {
+        Ok(true)
     }
 }
 
