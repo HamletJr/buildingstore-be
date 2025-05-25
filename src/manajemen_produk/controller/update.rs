@@ -3,7 +3,9 @@ use rocket::{put, routes, Route};
 use crate::manajemen_produk::model::{ProdukBuilder};
 use crate::manajemen_produk::repository;
 use super::dto::{ProdukRequest, ProdukResponse, ApiResponse};
+use autometrics::autometrics;
 
+#[autometrics]
 #[put("/produk/<id>", format = "json", data = "<request>")]
 pub async fn update_produk(
     id: i64,
@@ -72,6 +74,7 @@ pub async fn update_produk(
     }
 }
 
+#[autometrics]
 #[put("/produk/<id>/stok", format = "json", data = "<stok_baru>")]
 pub async fn update_stok_produk(
     id: i64,

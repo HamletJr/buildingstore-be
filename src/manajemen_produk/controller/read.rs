@@ -2,7 +2,9 @@ use rocket::serde::json::Json;
 use rocket::{get, routes, Route};
 use crate::manajemen_produk::repository;
 use super::dto::{ProdukResponse, ApiResponse};
+use autometrics::autometrics;
 
+#[autometrics]
 #[get("/produk")]
 pub async fn list_produk() -> Json<ApiResponse<Vec<ProdukResponse>>> {
     match repository::read::ambil_semua_produk().await {
