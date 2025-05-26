@@ -513,7 +513,7 @@ mod tests {
                 get_all_transaksi, create_transaksi, get_transaksi_by_id, 
                 update_transaksi, delete_transaksi, complete_transaksi, cancel_transaksi,
                 get_detail_transaksi, add_detail_transaksi, update_detail_transaksi, delete_detail_transaksi,
-                get_transaksi_with_details, validate_product_stock
+                get_transaksi_with_details, validate_product_stock, login
             ]);
         
         let client = Client::tracked(rocket).await.expect("Must provide a valid Rocket instance");
