@@ -405,11 +405,11 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        let db_name = format!("sqlite::memory:service_test_{}", timestamp);
+        let db_name = "sqlite::memory:";
         
         let db = AnyPoolOptions::new()
             .max_connections(1)
-            .connect(&db_name)
+            .connect(db_name)
             .await
             .unwrap();
         
