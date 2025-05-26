@@ -243,7 +243,7 @@ mod tests {
 
         let result = service.save_supplier(pool, "Test".to_string(), "Test".to_string(), 10, "Test".to_string()).await;
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err(), "Service: Repository save error: Io(Custom { kind: Other, error: \"db error\" })");
+        assert_eq!(result.unwrap_err(), "Service: Repository save error: error communicating with database: db error");
     }
 
     #[tokio::test]
