@@ -470,9 +470,15 @@ mod tests {
     use rocket::local::asynchronous::Client;
     use rocket::{routes, uri, Rocket, async_test};
     use sqlx::any::install_default_drivers;
+    use crate::auth::model::user::User;
+    use crate::auth::service::auth::AuthService;
+    use crate::auth::controller::auth::*;
     use crate::transaksi_penjualan::model::transaksi::Transaksi;
 
-    async fn setup() -> Rocket<rocket::Build> {
+    const ADMIN_USERNAME: &str = "admin";
+    const ADMIN_PASSWORD: &str = "admin123";
+
+    async fn setup() -> Client {
         install_default_drivers();
         
         use std::time::{SystemTime, UNIX_EPOCH};
@@ -493,20 +499,40 @@ mod tests {
             .await
             .unwrap();
 
-        rocket::build()
+        // Create an admin user for testing
+        AuthService::register_user(
+            db.clone(),
+            User::new(ADMIN_USERNAME.to_string(), 
+                ADMIN_PASSWORD.to_string(), 
+                true)
+            ).await.unwrap();
+
+        let rocket = rocket::build()
             .manage(db.clone())
             .mount("/", routes![
                 get_all_transaksi, create_transaksi, get_transaksi_by_id, 
                 update_transaksi, delete_transaksi, complete_transaksi, cancel_transaksi,
                 get_detail_transaksi, add_detail_transaksi, update_detail_transaksi, delete_detail_transaksi,
                 get_transaksi_with_details, validate_product_stock
-            ])
+            ]);
+        
+        let client = Client::tracked(rocket).await.expect("Must provide a valid Rocket instance");
+
+        // Authenticate as admin
+        client.post(uri!(login))
+            .json(&AuthForm {
+                username: ADMIN_USERNAME.to_string(),
+                password: ADMIN_PASSWORD.to_string(),
+            })
+            .dispatch()
+            .await;
+
+        client
     }
 
     #[async_test]
     async fn test_create_transaksi_with_validation() {
-        let rocket = setup().await;
-        let client = Client::tracked(rocket).await.expect("Must provide a valid Rocket instance");
+        let client = setup().await;
 
         let new_transaksi_request = crate::transaksi_penjualan::dto::transaksi_request::CreateTransaksiRequest {
             id_pelanggan: 1,
@@ -539,8 +565,7 @@ mod tests {
 
     #[async_test]
     async fn test_get_all_transaksi() {
-        let rocket = setup().await;
-        let client = Client::tracked(rocket).await.expect("Must provide a valid Rocket instance");
+        let client = setup().await;
 
         let response = client.get("/transaksi").dispatch().await;
         assert_eq!(response.status(), Status::Ok);
@@ -551,8 +576,7 @@ mod tests {
 
     #[async_test]
     async fn test_validate_product_stock() {
-        let rocket = setup().await;
-        let client = Client::tracked(rocket).await.expect("Must provide a valid Rocket instance");
+        let client = setup().await;
 
         let products = vec![
             crate::transaksi_penjualan::dto::transaksi_request::CreateDetailTransaksiRequest {
@@ -573,8 +597,7 @@ mod tests {
 
     #[async_test]
     async fn test_get_transaksi_with_details() {
-        let rocket = setup().await;
-        let client = Client::tracked(rocket).await.expect("Must provide a valid Rocket instance");
+        let client = setup().await;
 
         let new_transaksi_request = crate::transaksi_penjualan::dto::transaksi_request::CreateTransaksiRequest {
             id_pelanggan: 1,
@@ -614,8 +637,7 @@ mod tests {
 
     #[async_test]
     async fn test_transaksi_state_transitions() {
-        let rocket = setup().await;
-        let client = Client::tracked(rocket).await.expect("Must provide a valid Rocket instance");
+        let client = setup().await;
 
         let new_transaksi_request = crate::transaksi_penjualan::dto::transaksi_request::CreateTransaksiRequest {
             id_pelanggan: 1,
@@ -660,8 +682,7 @@ mod tests {
 
     #[async_test]
     async fn test_detail_transaksi_crud() {
-        let rocket = setup().await;
-        let client = Client::tracked(rocket).await.expect("Must provide a valid Rocket instance");
+        let client = setup().await;
 
         let new_transaksi_request = crate::transaksi_penjualan::dto::transaksi_request::CreateTransaksiRequest {
             id_pelanggan: 1,
@@ -711,8 +732,7 @@ mod tests {
 
     #[async_test]
     async fn test_error_handling() {
-        let rocket = setup().await;
-        let client = Client::tracked(rocket).await.expect("Must provide a valid Rocket instance");
+        let client = setup().await;
 
         let response = client.get("/transaksi/99999").dispatch().await;
         assert_eq!(response.status(), Status::NotFound);
