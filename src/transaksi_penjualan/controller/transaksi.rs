@@ -507,8 +507,10 @@ mod tests {
                 true)
             ).await.unwrap();
 
+        let production = false;
         let rocket = rocket::build()
             .manage(db.clone())
+            .manage(production)
             .mount("/", routes![
                 get_all_transaksi, create_transaksi, get_transaksi_by_id, 
                 update_transaksi, delete_transaksi, complete_transaksi, cancel_transaksi,
